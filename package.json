@@ -1,0 +1,13 @@
+{
+  "name": "svg-to-oom-converter",
+  "version": "1.0.0",
+  "description": "Centimeter-perfect SVG and PDF map converter to OpenOrienteering Mapper format (.omap)",
+  "main": "test_conversion.js",
+  "scripts": {
+    "test": "node test_conversion.js"
+  },
+  "dependencies": {
+    "jsdom": "^20.0.0",
+    "pdfjs-dist": "^3.11.174"
+  }
+}

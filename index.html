@@ -1,0 +1,2227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OOM Map Wizard v2</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Load PDF.js (Main library and Worker script loaded in main thread for file:// security bypass) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --bg: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.85);
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: rgba(255, 255, 255, 0.1);
+            --accent: #10b981;
+            --glass: rgba(255, 255, 255, 0.03);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.1) 0%, transparent 40%);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .container { width: 100%; max-width: 950px; animation: fadeIn 0.8s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 32px;
+            padding: 3rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.6rem;
+            font-weight: 800;
+            text-align: center;
+            background: linear-gradient(135deg, #a5b4fc 0%, #34d399 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        p.subtitle { color: var(--text-muted); text-align: center; margin-bottom: 2.5rem; }
+
+        /* Step Indicators */
+        .steps { display: flex; justify-content: center; gap: 1rem; margin-bottom: 2rem; }
+        .step { 
+            width: 40px; height: 8px; border-radius: 4px; background: var(--border); transition: all 0.4s;
+        }
+        .step.active { background: var(--primary); width: 60px; box-shadow: 0 0 15px var(--primary); }
+
+        /* File Upload Area */
+        .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+        .drop-zone {
+            background: var(--glass);
+            border: 2px dashed var(--border);
+            border-radius: 20px;
+            padding: 2.5rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+        .drop-zone:hover { border-color: var(--primary); background: rgba(99, 102, 241, 0.05); }
+        .drop-zone.active { border-color: var(--accent); background: rgba(16, 185, 129, 0.05); }
+        .drop-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+        .drop-zone svg { width: 44px; height: 44px; stroke: var(--text-muted); margin-bottom: 1rem; transition: all 0.3s; }
+        .drop-zone:hover svg { stroke: var(--primary); transform: translateY(-2px); }
+        .drop-zone .label { font-size: 0.95rem; font-weight: 600; display: block; margin-bottom: 0.25rem; }
+        .drop-zone .filename { font-size: 0.78rem; color: var(--text-muted); word-break: break-all; }
+
+        /* Wizard Panel */
+        .wizard-panel { display: none; margin-top: 1rem; }
+        .wizard-table-wrapper { 
+            max-height: 480px; overflow-y: auto; border-radius: 16px; border: 1px solid var(--border);
+            background: rgba(0,0,0,0.2); margin-bottom: 1.5rem;
+        }
+        .wizard-table { width: 100%; border-collapse: collapse; }
+        .wizard-table th { 
+            position: sticky; top: 0; background: #1e293b; color: var(--text-muted); 
+            text-align: left; padding: 1rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em;
+            z-index: 10;
+        }
+        .wizard-table td { padding: 1rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        
+        .color-preview-pair { display: flex; align-items: center; gap: 10px; }
+        .swatch { width: 26px; height: 26px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.25); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .swatch.stroke { border-width: 3px; background: transparent !important; }
+
+        .symbol-select {
+            width: 100%; padding: 0.65rem; background: #0f172a; border: 1px solid var(--border);
+            border-radius: 8px; color: var(--text); font-size: 0.85rem; outline: none;
+            transition: border-color 0.2s;
+        }
+        .symbol-select:focus { border-color: var(--primary); }
+
+        button.main-btn {
+            width: 100%; padding: 1.25rem; background: var(--primary); color: white; border: none;
+            border-radius: 16px; font-weight: 700; font-size: 1rem; cursor: pointer;
+            transition: all 0.3s; display: flex; align-items: center; justify-content: center; gap: 10px;
+        }
+        button.main-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 20px -5px rgba(99, 102, 241, 0.5); }
+        button.main-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            font-size: 0.85rem;
+            font-weight: bold;
+            flex-shrink: 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        }
+        .badge.green { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .badge.yellow { background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .badge.red { background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+        .status { margin-top: 1.5rem; text-align: center; font-size: 0.95rem; min-height: 1.5rem; font-weight: 600; }
+        .success { color: var(--accent); }
+        .error { color: #f87171; }
+
+        /* Interactive map preview highlighting */
+        .map-highlight {
+            stroke: #ff00ff !important;
+            stroke-width: 3px !important;
+            stroke-dasharray: none !important;
+            filter: drop-shadow(0 0 8px #ff00ff) !important;
+            animation: pulse-glow 1s infinite alternate !important;
+            opacity: 1 !important;
+        }
+        @keyframes pulse-glow {
+            from { filter: drop-shadow(0 0 2px #ff00ff); opacity: 0.7; }
+            to { filter: drop-shadow(0 0 12px #ff00ff); opacity: 1; }
+        }
+
+        .wizard-table tr {
+            transition: background-color 0.2s;
+            cursor: pointer;
+        }
+        .wizard-table tr:hover {
+            background-color: rgba(99, 102, 241, 0.08) !important;
+        }
+
+        .drawer-header:hover {
+            background: rgba(255, 255, 255, 0.08) !important;
+            border-color: rgba(255, 255, 255, 0.2) !important;
+        }
+
+        .zoom-btn {
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: rgba(30, 41, 59, 0.85);
+            color: var(--text);
+            font-weight: 700;
+            font-size: 1.1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            outline: none;
+            backdrop-filter: blur(5px);
+            user-select: none;
+        }
+        .zoom-btn:hover {
+            background: var(--primary);
+            border-color: var(--primary);
+            transform: translateY(-1px) scale(1.05);
+            box-shadow: 0 6px 14px rgba(99, 102, 241, 0.4);
+        }
+        .zoom-btn:active {
+            transform: translateY(0) scale(0.95);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="card">
+        <h1>OOM Map Wizard v2</h1>
+        <p class="subtitle">Convert SVG and PDF maps with centimeter-perfect geometry and robust area hole support</p>
+
+        <div class="steps">
+            <div class="step active" id="step1-dot"></div>
+            <div class="step" id="step2-dot"></div>
+        </div>
+
+        <!-- Section 1: Upload -->
+        <div id="upload-section">
+            <div class="upload-grid">
+                <div class="drop-zone" id="map-zone">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 16l-4-4m0 0l4-4m-4 4h18" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <span class="label">SVG or PDF Map</span>
+                    <span class="filename" id="map-name">Select Vector SVG / PDF Map</span>
+                    <input type="file" id="map-input" accept=".svg,.pdf">
+                </div>
+                <div class="drop-zone" id="oom-zone">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <span class="label">OOM Template</span>
+                    <span class="filename" id="oom-name">Select Blank Template .omap</span>
+                    <input type="file" id="oom-input" accept=".omap">
+                </div>
+            </div>
+            <button class="main-btn" id="analyze-btn" disabled>Scan Files & Start Wizard</button>
+        </div>
+
+        <!-- Section 2: Wizard -->
+        <div id="wizard-section" class="wizard-panel">
+            <div class="wizard-layout" style="display: flex; gap: 2rem; align-items: flex-start; width: 100%;">
+                <!-- Left Column: Table and Drawer -->
+                <div class="wizard-table-column" style="flex: 1.2; min-width: 0; display: flex; flex-direction: column; gap: 1.5rem;">
+                    <div class="wizard-table-wrapper" style="margin-bottom: 0;">
+                        <table class="wizard-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 320px;">Vector Feature Style</th>
+                                    <th>Count</th>
+                                    <th>Map to OOM Symbol</th>
+                                </tr>
+                            </thead>
+                            <tbody id="wizard-body"></tbody>
+                        </table>
+                    </div>
+
+                    <!-- Collapsible Drawer for Low-Confidence / Technical styles -->
+                    <div class="drawer-container" id="low-conf-drawer" style="display: none; border: 1px solid var(--border); border-radius: 16px; overflow: hidden;">
+                        <div class="drawer-header" id="low-conf-header" style="display: flex; justify-content: space-between; align-items: center; padding: 1.2rem 1.5rem; background: rgba(30, 41, 59, 0.5); cursor: pointer; transition: all 0.3s; user-select: none;">
+                            <span style="font-weight: 600; font-size: 0.95rem; color: #f59e0b; display: flex; align-items: center; gap: 8px;">
+                                <span class="badge yellow" style="font-size: 0.75rem; width: 20px; height: 20px;">!</span> Unresolved / Low-Confidence Styles (<span id="low-conf-count">0</span>)
+                            </span>
+                            <span id="drawer-arrow" style="transition: transform 0.3s; font-size: 0.8rem; color: var(--text-muted);">▼ Expand</span>
+                        </div>
+                        <div id="drawer-content" style="display: none; border-top: 1px solid var(--border); background: rgba(0,0,0,0.2); max-height: 350px; overflow-y: auto; padding: 1rem;">
+                            <table class="wizard-table" style="width: 100%;">
+                                <tbody id="low-conf-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Interactive Map Preview -->
+                <div class="map-preview-column" style="flex: 0.8; position: sticky; top: 2rem; display: flex; flex-direction: column; gap: 1rem;">
+                    <div class="card" style="padding: 1.5rem; border-radius: 24px; background: rgba(30, 41, 59, 0.4); border: 1px solid var(--border); box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+                        <h3 style="font-family: 'Outfit', sans-serif; font-size: 1.15rem; font-weight: 700; margin-bottom: 0.75rem; color: #a5b4fc; display: flex; align-items: center; gap: 8px;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 000 20 14.5 14.5 0 000-20"/></svg>
+                            Live Map Preview
+                        </h3>
+                        <div id="map-preview-container" style="width: 100%; height: 450px; background: #f1f5f9; border-radius: 16px; border: 1px solid var(--border); overflow: hidden; display: flex; align-items: center; justify-content: center; position: relative;">
+                            <div style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 2rem;">No map loaded</div>
+                            
+                            <!-- Floating Zoom Controls -->
+                            <div id="zoom-controls" style="position: absolute; bottom: 15px; right: 15px; display: none; gap: 8px; z-index: 100;">
+                                <button class="zoom-btn" onclick="zoomMap(1.25)" title="Zoom In">+</button>
+                                <button class="zoom-btn" onclick="zoomMap(0.8)" title="Zoom Out">-</button>
+                                <button class="zoom-btn" onclick="resetMapZoom()" title="Reset View" style="font-size: 0.72rem; width: auto; padding: 0 10px;">Reset</button>
+                            </div>
+                        </div>
+                        <p style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.75rem; text-align: center; line-height: 1.4;">
+                            Hover over any row in the table to highlight matching elements on the map.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <button class="main-btn" id="convert-btn" style="margin-top: 2rem;">Generate & Download OMAP</button>
+        </div>
+
+        <div id="status" class="status"></div>
+        <div id="debug-log" style="margin-top: 1.5rem; padding: 1rem; background: rgba(0,0,0,0.4); border-radius: 8px; font-family: monospace; font-size: 0.8rem; max-height: 200px; overflow-y: auto; text-align: left; border: 1px solid var(--border); display: none;"></div>
+    </div>
+</div>
+
+<datalist id="symbol-list"></datalist>
+
+<script>
+    function debugLog(msg) {
+        const div = document.getElementById('debug-log');
+        if (div) {
+            div.style.display = 'block';
+            div.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+        }
+        console.log(msg);
+    }
+
+    // PDF.js worker is loaded via script tag in head to bypass file:// CORS restrictions
+    const SCALE_FACTOR = (25.4 / 72) * 1000; // Scales PDF points (72 DPI) to OMAP coordinates (1/1000 mm)
+    const NAMED_COLORS = {
+        black: '#000000', white: '#ffffff', red: '#ff0000', green: '#00ff00', blue: '#0000ff',
+        yellow: '#ffff00', cyan: '#00ffff', magenta: '#ff00ff', gray: '#808080', grey: '#808080'
+    };
+
+        const LEGEND_RULES = {
+        "f:null|s:#231f20|w:0.28": [
+                "501.1"
+        ],
+        "f:null|s:#000000|w:0.28": [
+                "501.1"
+        ],
+        "f:#939598|s:null|w:null": [
+                "521"
+        ],
+        "f:null|s:#231f20|w:1.13": [
+                "515"
+        ],
+        "f:null|s:#000000|w:1.13": [
+                "515"
+        ],
+        "f:#ffdca3|s:null|w:null": [
+                "403"
+        ],
+        "f:null|s:#bf4000|w:0.21": [
+                "101.000",
+                "101.001",
+                "104.000",
+                "104.005"
+        ],
+        "f:null|s:#bf4000|w:0.30": [
+                "102.000"
+        ],
+        "f:#bf4000|s:#bf4000|w:null": [
+                "102.003",
+                "105.100",
+                "105.200",
+                "107.000",
+                "108.000",
+                "109.000",
+                "110.000",
+                "112.000",
+                "113.000"
+        ],
+        "f:null|s:#bf4000|w:0.15": [
+                "103.000",
+                "103.001"
+        ],
+        "f:null|s:#bf4000|w:0.27": [
+                "104.000",
+                "105.100",
+                "105.200"
+        ],
+        "f:null|s:#bf4000|w:0.37": [
+                "104.005",
+                "107.000"
+        ],
+        "f:null|s:#bf4000|w:0.25": [
+                "111.000",
+                "115.000"
+        ],
+        "f:null|s:#000000|w:0.50": [
+                "201.000",
+                "201.004"
+        ],
+        "f:null|s:#000000|w:0.18": [
+                "201.000",
+                "201.004",
+                "202.000",
+                "202.002",
+                "301.000",
+                "301.002",
+                "301.004",
+                "307.000"
+        ],
+        "f:null|s:#000000|w:0.30": [
+                "202.000",
+                "202.001",
+                "202.002",
+                "202.003"
+        ],
+        "f:#000000|s:#000000|w:null": [
+                "203.000",
+                "203.001",
+                "204.000",
+                "205.000",
+                "206.000",
+                "207.000",
+                "208.000",
+                "208.002",
+                "208.004",
+                "210.000",
+                "210.001",
+                "416.000",
+                "512.100",
+                "512.101",
+                "513.100",
+                "513.200",
+                "522.100",
+                "524.000",
+                "526.000"
+        ],
+        "f:#ffdb99|s:#ffdb99|w:null": [
+                "213.000",
+                "403.000",
+                "404.000",
+                "404.001",
+                "413.100",
+                "414.100"
+        ],
+        "f:url(#p21300.0c35ang450dim0t0)|s:#000000|w:null": [
+                "213.000"
+        ],
+        "f:#a6a6a6|s:#a6a6a6|w:null": [
+                "214.000",
+                "512.301"
+        ],
+        "f:#00ffff|s:#00ffff|w:null": [
+                "301.000",
+                "301.001",
+                "303.000",
+                "309.000",
+                "512.302"
+        ],
+        "f:#4dffff|s:#4dffff|w:null": [
+                "301.004",
+                "301.005"
+        ],
+        "f:null|s:#00ffff|w:0.18": [
+                "302.000",
+                "302.004",
+                "601.001"
+        ],
+        "f:#b3ffff|s:#b3ffff|w:null": [
+                "302.000",
+                "302.001"
+        ],
+        "f:null|s:#00ffff|w:0.21": [
+                "305.000",
+                "306.000"
+        ],
+        "f:url(#h30700.0c16ang0dim0t0)|s:#00ffff|w:null": [
+                "307.000"
+        ],
+        "f:url(#h30700.0c2ang0dim0t0)|s:#000000|w:null": [
+                "307.000"
+        ],
+        "f:url(#h30700.1c16ang0dim0t0)|s:#00ffff|w:null": [
+                "307.001"
+        ],
+        "f:url(#h30800.0c16ang0dim0t0)|s:#00ffff|w:null": [
+                "308.000"
+        ],
+        "f:null|s:#00ffff|w:0.12": [
+                "308.001"
+        ],
+        "f:url(#p31000.0c16ang0dim0t0)|s:#00ffff|w:null": [
+                "310.000"
+        ],
+        "f:null|s:#00ffff|w:0.25": [
+                "311.000",
+                "312.000",
+                "313.000"
+        ],
+        "f:#ffba36|s:#ffba36|w:null": [
+                "401.000",
+                "402.000",
+                "402.001",
+                "412.000",
+                "413.000",
+                "414.000",
+                "512.304"
+        ],
+        "f:#ffcc69|s:#ffcc69|w:null": [
+                "401.001"
+        ],
+        "f:url(#p40200.0c31ang450dim0t0)|s:#ffffff|w:null": [
+                "402.000"
+        ],
+        "f:url(#p40200.1c27ang450dim0t0)|s:#85ff66|w:null": [
+                "402.001"
+        ],
+        "f:url(#p40400.0c31ang450dim0t0)|s:#ffffff|w:null": [
+                "404.000"
+        ],
+        "f:url(#p40400.1c27ang450dim0t0)|s:#85ff66|w:null": [
+                "404.001"
+        ],
+        "f:#ffffff|s:#ffffff|w:null": [
+                "405.000",
+                "417.000",
+                "418.000"
+        ],
+        "f:#c2ffb3|s:#c2ffb3|w:null": [
+                "406.000",
+                "406.001"
+        ],
+        "f:url(#h40600.1c23ang900dim0t0)|s:#ffffff|w:null": [
+                "406.001"
+        ],
+        "f:null|s:#c2ffb3|w:0.40": [
+                "406.002"
+        ],
+        "f:url(#h40700.0c29ang900dim0t0)|s:#33ff00|w:null": [
+                "407.000"
+        ],
+        "f:#85ff66|s:#85ff66|w:null": [
+                "408.000",
+                "408.001",
+                "512.307"
+        ],
+        "f:url(#h40800.1c23ang900dim0t0)|s:#ffffff|w:null": [
+                "408.001"
+        ],
+        "f:null|s:#85ff66|w:0.40": [
+                "408.002"
+        ],
+        "f:url(#h40900.0c29ang900dim0t0)|s:#33ff00|w:null": [
+                "409.000"
+        ],
+        "f:#33ff00|s:#33ff00|w:null": [
+                "410.000",
+                "410.001",
+                "413.001",
+                "512.308"
+        ],
+        "f:url(#h41000.1c23ang900dim0t0)|s:#ffffff|w:null": [
+                "410.001"
+        ],
+        "f:null|s:#33ff00|w:0.25": [
+                "410.002",
+                "417.000",
+                "419.000"
+        ],
+        "f:#00b324|s:#00b324|w:null": [
+                "411.000",
+                "512.309"
+        ],
+        "f:null|s:#00b324|w:0.40": [
+                "411.002"
+        ],
+        "f:url(#p41200.0c35ang0dim0t0)|s:#000000|w:null": [
+                "412.000"
+        ],
+        "f:url(#p41300.0c29ang0dim0t0)|s:#33ff00|w:null": [
+                "413.000"
+        ],
+        "f:url(#p41310.0c29ang0dim0t0)|s:#33ff00|w:null": [
+                "413.100"
+        ],
+        "f:url(#p41400.0c29ang900dim0t0)|s:#33ff00|w:null": [
+                "414.000"
+        ],
+        "f:url(#p41410.0c29ang900dim0t0)|s:#33ff00|w:null": [
+                "414.100"
+        ],
+        "f:null|s:#000000|w:0.15": [
+                "415.000"
+        ],
+        "f:null|s:#33ff00|w:0.30": [
+                "418.000"
+        ],
+        "f:null|s:#ffffff|w:0.50": [
+                "419.000"
+        ],
+        "f:null|s:#000000|w:0.10": [
+                "501.000",
+                "501.010",
+                "501.011",
+                "501.012",
+                "501.013",
+                "501.020",
+                "501.030",
+                "501.031",
+                "501.032",
+                "501.033",
+                "501.100",
+                "501.200",
+                "520.000",
+                "520.002",
+                "522.000",
+                "522.001",
+                "532.000",
+                "532.001",
+                "532.002"
+        ],
+        "f:#f0c4ab|s:#f0c4ab|w:null": [
+                "501.000",
+                "501.001",
+                "501.002",
+                "501.300"
+        ],
+        "f:null|s:#f0c4ab|w:0.50": [
+                "501.010",
+                "501.011",
+                "505.001"
+        ],
+        "f:null|s:#f0c4ab|w:0.40": [
+                "501.010",
+                "505.000",
+                "532.000"
+        ],
+        "f:null|s:#f0c4ab|w:0.60": [
+                "501.011"
+        ],
+        "f:null|s:#f0c4ab|w:0.85": [
+                "501.012"
+        ],
+        "f:null|s:#f0c4ab|w:0.75": [
+                "501.012",
+                "505.002",
+                "532.001"
+        ],
+        "f:null|s:#f0c4ab|w:1.10": [
+                "501.013"
+        ],
+        "f:null|s:#f0c4ab|w:1.00": [
+                "501.013",
+                "505.003",
+                "532.002"
+        ],
+        "f:#e5a67f|s:#e5a67f|w:null": [
+                "501.020",
+                "501.021",
+                "501.301",
+                "512.311"
+        ],
+        "f:null|s:#e5a67f|w:0.60": [
+                "501.030"
+        ],
+        "f:null|s:#e5a67f|w:0.50": [
+                "501.030"
+        ],
+        "f:null|s:#e5a67f|w:1.10": [
+                "501.031"
+        ],
+        "f:null|s:#e5a67f|w:1.00": [
+                "501.031"
+        ],
+        "f:null|s:#e5a67f|w:1.60": [
+                "501.032"
+        ],
+        "f:null|s:#e5a67f|w:1.50": [
+                "501.032"
+        ],
+        "f:null|s:#e5a67f|w:2.10": [
+                "501.033"
+        ],
+        "f:null|s:#e5a67f|w:2.00": [
+                "501.033"
+        ],
+        "f:url(#p50130.0c23ang450dim0t0)|s:#ffffff|w:null": [
+                "501.300"
+        ],
+        "f:url(#p50130.1c23ang450dim0t0)|s:#ffffff|w:null": [
+                "501.301"
+        ],
+        "f:null|s:#000000|w:0.12": [
+                "505.000",
+                "505.001",
+                "505.002",
+                "505.003",
+                "505.004"
+        ],
+        "f:null|s:#f0c4ab|w:0.52": [
+                "505.000"
+        ],
+        "f:null|s:#f0c4ab|w:0.62": [
+                "505.001"
+        ],
+        "f:null|s:#f0c4ab|w:0.87": [
+                "505.002"
+        ],
+        "f:null|s:#f0c4ab|w:1.12": [
+                "505.003"
+        ],
+        "f:null|s:#000000|w:0.27": [
+                "506.000",
+                "507.000"
+        ],
+        "f:null|s:#000000|w:0.21": [
+                "508.000",
+                "513.100",
+                "513.101",
+                "513.200",
+                "516.000",
+                "528.000"
+        ],
+        "f:null|s:#000000|w:0.45": [
+                "509.100"
+        ],
+        "f:null|s:#ffffff|w:0.25": [
+                "509.100"
+        ],
+        "f:null|s:#9eba00|w:1.25": [
+                "509.101"
+        ],
+        "f:null|s:#000000|w:0.08": [
+                "509.200"
+        ],
+        "f:null|s:#000000|w:0.14": [
+                "510.000",
+                "511.000",
+                "511.001",
+                "516.000",
+                "518.000",
+                "521.000",
+                "521.002",
+                "521.003",
+                "528.000",
+                "529.000",
+                "601.000"
+        ],
+        "f:null|s:#000000|w:0.20": [
+                "512.200"
+        ],
+        "f:url(#h51230.0c45ang450dim0t0)|s:#ffffff|w:null": [
+                "512.300"
+        ],
+        "f:url(#h51230.1c45ang450dim0t0)|s:#ffffff|w:null": [
+                "512.301"
+        ],
+        "f:url(#h51230.2c9ang450dim0t0)|s:#ffffff|w:null": [
+                "512.302"
+        ],
+        "f:url(#h51230.4c45ang450dim0t0)|s:#ffffff|w:null": [
+                "512.304"
+        ],
+        "f:url(#h51230.7c45ang450dim0t0)|s:#ffffff|w:null": [
+                "512.307"
+        ],
+        "f:url(#h51230.8c45ang450dim0t0)|s:#ffffff|w:null": [
+                "512.308"
+        ],
+        "f:url(#h51230.9c45ang450dim0t0)|s:#ffffff|w:null": [
+                "512.309"
+        ],
+        "f:url(#h51231.1c45ang450dim0t0)|s:#ffffff|w:null": [
+                "512.311"
+        ],
+        "f:#9eba00|s:#9eba00|w:null": [
+                "512.312",
+                "520.000",
+                "520.001"
+        ],
+        "f:url(#h51231.2c45ang450dim0t0)|s:#ffffff|w:null": [
+                "512.312"
+        ],
+        "f:#7f7f7f|s:#7f7f7f|w:null": [
+                "512.315",
+                "521.000",
+                "521.003"
+        ],
+        "f:url(#h51231.5c47ang450dim0t0)|s:#ffffff|w:null": [
+                "512.315"
+        ],
+        "f:#cccccc|s:#cccccc|w:null": [
+                "512.313",
+                "522.000"
+        ],
+        "f:url(#h51231.3c45ang450dim0t0)|s:#ffffff|w:null": [
+                "512.313"
+        ],
+        "f:#a626ff|s:#a626ff|w:null": [
+                "512.314",
+                "704.000"
+        ],
+        "f:url(#h51231.4c47ang450dim0t0)|s:#ffffff|w:null": [
+                "512.314"
+        ],
+        "f:null|s:#000000|w:0.40": [
+                "515.000",
+                "518.000",
+                "529.000"
+        ],
+        "f:null|s:#000000|w:0.25": [
+                "519.000",
+                "524.000"
+        ],
+        "f:null|s:#000000|w:0.22": [
+                "525.000",
+                "526.000",
+                "527.000",
+                "530.000",
+                "531.000"
+        ],
+        "f:url(#p53300.0c11ang450dim0t0)|s:#7f7f7f|w:null": [
+                "533.000"
+        ],
+        "f:url(#h60100.2c2ang900dim0t0)|s:#000000|w:null": [
+                "601.002"
+        ],
+        "f:url(#h60100.3c14ang900dim0t0)|s:#00ffff|w:null": [
+                "601.003"
+        ],
+        "f:null|s:#a626ff|w:0.35": [
+                "701.000",
+                "703.000",
+                "705.000",
+                "706.000",
+                "707.000",
+                "710.200",
+                "715.000"
+        ],
+        "f:null|s:#a626ff|w:0.60": [
+                "702.000"
+        ],
+        "f:null|s:#a626ff|w:1.00": [
+                "708.000"
+        ],
+        "f:url(#h70900.0c50ang-450dim0t0)|s:#a626ff|w:null": [
+                "709.000"
+        ],
+        "f:url(#h70900.0c50ang450dim0t0)|s:#a626ff|w:null": [
+                "709.000"
+        ],
+        "f:null|s:#a626ff|w:0.40": [
+                "709.001",
+                "709.003",
+                "709.004"
+        ],
+        "f:url(#h70900.1c50ang-450dim0t0)|s:#a626ff|w:null": [
+                "709.001"
+        ],
+        "f:url(#h70900.1c50ang450dim0t0)|s:#a626ff|w:null": [
+                "709.001"
+        ],
+        "f:url(#h70900.3c50ang-450dim0t0)|s:#a626ff|w:null": [
+                "709.003"
+        ],
+        "f:url(#h70900.3c50ang450dim0t0)|s:#a626ff|w:null": [
+                "709.003"
+        ],
+        "f:null|s:#a626ff|w:0.50": [
+                "710.100"
+        ],
+        "f:null|s:#a626ff|w:0.10": [
+                "714.000",
+                "714.001"
+        ],
+        "f:#d191ff|s:#d191ff|w:null": [
+                "714.000"
+        ]
+};
+
+    function codesMatch(c1, c2) {
+        if (c1 === c2) return true;
+        if (!c1 || !c2) return false;
+        const parts1 = c1.split('.').map(Number);
+        const parts2 = c2.split('.').map(Number);
+        const maxLen = Math.max(parts1.length, parts2.length);
+        for (let i = 0; i < maxLen; i++) {
+            const p1 = parts1[i] || 0;
+            const p2 = parts2[i] || 0;
+            if (p1 !== p2) return false;
+        }
+        return true;
+    }
+
+    function getSymbolFromPatternId(fill) {
+        if (!fill || !fill.startsWith('url(#')) return null;
+        const match = fill.toLowerCase().match(/url\(#(p|h)(\d{3})(\d{2})/);
+        if (match) {
+            const main = match[2];
+            const sub = match[3];
+            return `${parseInt(main)}.${sub}`;
+        }
+        return null;
+    }
+
+    function findLegendRule(fill, stroke, strokeWidth) {
+        let bestKey = null;
+        let minWidthDiff = Infinity;
+        const w = (strokeWidth && strokeWidth !== 'null') ? parseFloat(strokeWidth) : null;
+        
+        for (const key in LEGEND_RULES) {
+            const m = key.match(/^f:([^|]+)\|s:([^|]+)\|w:(.+)$/);
+            if (!m) continue;
+            const rFill = m[1];
+            const rStroke = m[2];
+            const rWidthStr = m[3];
+            const rWidth = rWidthStr !== 'null' ? parseFloat(rWidthStr) : null;
+            
+            if (rFill === fill && rStroke === stroke) {
+                if (rWidth === null && w === null) {
+                    return key;
+                }
+                if (rWidth !== null && w !== null) {
+                    const diff = Math.abs(rWidth - w);
+                    if (diff < 0.08 && diff < minWidthDiff) {
+                        minWidthDiff = diff;
+                        bestKey = key;
+                    }
+                }
+            }
+        }
+        return bestKey;
+    }
+
+const state = { 
+        svgDoc: null, 
+        oomText: '', 
+        oomPalette: [], 
+        uniqueStyles: [],
+        svgStyles: {},
+        pageCenter: { x: 421, y: 297.5 } // Default A4 center in points
+    };
+
+    // --- DOM Elements ---
+    const mapIn = document.getElementById('map-input'), oomIn = document.getElementById('oom-input'), analyzeBtn = document.getElementById('analyze-btn');
+    const wizardSec = document.getElementById('wizard-section'), uploadSec = document.getElementById('upload-section');
+    const wizardBody = document.getElementById('wizard-body'), status = document.getElementById('status');
+    const symbolList = document.getElementById('symbol-list');
+
+    // --- Ingestion Event Listeners ---
+    mapIn.onchange = e => { 
+        document.getElementById('map-name').textContent = e.target.files[0]?.name; 
+        document.getElementById('map-zone').classList.add('active');
+        checkReady();
+    };
+    oomIn.onchange = e => { 
+        document.getElementById('oom-name').textContent = e.target.files[0]?.name; 
+        document.getElementById('oom-zone').classList.add('active');
+        checkReady();
+    };
+
+    function checkReady() { analyzeBtn.disabled = !(mapIn.files[0] && oomIn.files[0]); }
+    function setStatus(msg, isErr) { status.innerHTML = msg; status.className = 'status ' + (isErr ? 'error' : 'success'); }
+
+    // --- Core: Analyze Vector Map & Load Template ---
+    analyzeBtn.onclick = async () => {
+        setStatus('Analyzing files. This might take a moment for PDFs...', false);
+        try {
+            // 1. Read OOM Template
+            state.oomText = await oomIn.files[0].text();
+            debugLog(`Template loaded. Length: ${state.oomText.length}`);
+            state.oomPalette = await parseOOMPalette(state.oomText);
+            
+            // Build datalist for symbol auto-completion/search
+            symbolList.innerHTML = state.oomPalette
+                .map(p => {
+                    let typeStr = 'Line';
+                    if (p.symbolType === "1") typeStr = 'Point';
+                    else if (p.symbolType === "4" || p.symbolType === "16") typeStr = 'Area';
+                    else if (p.symbolType === "8") typeStr = 'Text';
+                    return `<option value="${p.code}">${p.code} - ${p.name} (${typeStr})</option>`;
+                })
+                .join('');
+
+            // 2. Parse Source Vector File (SVG or PDF)
+            const mapFile = mapIn.files[0];
+            let svgElement;
+
+            if (mapFile.name.toLowerCase().endsWith('.pdf')) {
+                setStatus('Converting PDF vector streams to SVG representation...', false);
+                svgElement = await loadPDFAndConvertToSVG(mapFile);
+            } else {
+                setStatus('Parsing SVG structure...', false);
+                const svgText = await mapFile.text();
+                const parser = new DOMParser();
+                const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
+                svgElement = svgDoc.documentElement;
+            }
+
+            state.svgDoc = svgElement;
+            state.svgStyles = parseSVGStyles(svgElement);
+            
+            // 3. Compute Map Page Center
+            state.pageCenter = getPageCenter(svgElement);
+
+            // 4. Extract Unique Vector Styles
+            const stylesMap = new Map();
+            const allElements = svgElement.querySelectorAll('*');
+            const supportedElements = Array.from(allElements).filter(el => {
+                const ln = el.localName || el.tagName.split(':').pop().toLowerCase();
+                if (!['path', 'polygon', 'polyline', 'line', 'rect', 'circle', 'ellipse'].includes(ln)) return false;
+                if (isInsideDefs(el)) return false;
+                
+                // Exclude invisible elements (no stroke and no fill)
+                const fill = getElementStyle(el, 'fill');
+                const stroke = getElementStyle(el, 'stroke');
+                const strokeWidth = getInheritedAttribute(el, 'stroke-width');
+                if (fill === 'null' && stroke === 'null') return false;
+                
+                return true;
+            });
+            
+            supportedElements.forEach(el => {
+                const fill = getElementStyle(el, 'fill');
+                const stroke = getElementStyle(el, 'stroke');
+                const strokeWidth = getInheritedAttribute(el, 'stroke-width') || '';
+                
+                // Compute effective stroke width, accounting for element's transform scale
+                let effectiveStrokeWidth = strokeWidth;
+                const matrix = getCombinedElementMatrix(el);
+                if (strokeWidth && !isNaN(parseFloat(strokeWidth))) {
+                    const scale = getMatrixScale(matrix);
+                    effectiveStrokeWidth = (parseFloat(strokeWidth) * scale).toFixed(4);
+                }
+                
+                // SVG Group Label Detection
+                const groupLabels = getGroupLabels(el);
+                const groupName = groupLabels.length > 0 ? groupLabels[0] : '';
+                
+                // Group by styles and closest group name
+                const key = `f:${fill}|s:${stroke}|w:${effectiveStrokeWidth}|g:${groupName}`;
+                el.setAttribute('data-style-key', key);
+                
+                if (!stylesMap.has(key)) {
+                    stylesMap.set(key, {
+                        count: 0,
+                        fill,
+                        stroke,
+                        strokeWidth: effectiveStrokeWidth,
+                        groupName,
+                        samples: []
+                    });
+                }
+                
+                const styleObj = stylesMap.get(key);
+                styleObj.count++;
+                
+                // Collect up to 5 path samples
+                if (styleObj.samples.length < 5) {
+                    const pathStr = convertShapeToPathString(el);
+                    if (pathStr) {
+                        const subpaths = parseSVGPath(pathStr, matrix, state.pageCenter);
+                        if (subpaths.length > 0) {
+                            styleObj.samples.push(subpaths);
+                        }
+                    }
+                }
+            });
+
+            state.uniqueStyles = Array.from(stylesMap.entries()).map(([key, obj]) => {
+                return {
+                    key,
+                    count: obj.count,
+                    fill: obj.fill,
+                    stroke: obj.stroke,
+                    strokeWidth: obj.strokeWidth,
+                    groupName: obj.groupName,
+                    samples: obj.samples
+                };
+            });
+
+            if (state.uniqueStyles.length === 0) {
+                throw new Error('No vector paths or shapes found in the uploaded file.');
+            }
+
+            // Clone and insert map preview into side-panel container
+            const previewContainer = document.getElementById('map-preview-container');
+            if (previewContainer) {
+                const oldSvg = previewContainer.querySelector('svg');
+                if (oldSvg) oldSvg.remove();
+                
+                const previewSvg = svgElement.cloneNode(true);
+                previewSvg.style.width = '100%';
+                previewSvg.style.height = '100%';
+                previewSvg.style.maxWidth = '100%';
+                previewSvg.style.maxHeight = '100%';
+                previewContainer.insertBefore(previewSvg, previewContainer.firstChild);
+                
+                // Show controls and reset zoom
+                const controls = document.getElementById('zoom-controls');
+                if (controls) controls.style.display = 'flex';
+                resetMapZoom();
+            }
+            
+            // Adjust container width for wizard split layout
+            const mainContainer = document.querySelector('.container');
+            if (mainContainer) {
+                mainContainer.style.maxWidth = '1350px';
+            }
+
+            renderWizard();
+            debugLog(`Found ${state.uniqueStyles.length} unique styles.`);
+            setStatus(`Scan complete. Found ${state.uniqueStyles.length} unique styles.`, false);
+        } catch (e) { 
+            console.error(e);
+            setStatus('Analysis error: ' + e.message, true); 
+        }
+    };    // --- Render Wizard Mapping UI ---
+    function renderWizard() {
+        uploadSec.style.display = 'none';
+        wizardSec.style.display = 'block';
+        document.getElementById('step2-dot').classList.add('active');
+        
+        // Define toggle function for low-confidence drawer in global scope
+        window.toggleLowConfDrawer = function() {
+            const content = document.getElementById('drawer-content');
+            const arrow = document.getElementById('drawer-arrow');
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                arrow.textContent = '▲ Collapse';
+            } else {
+                content.style.display = 'none';
+                arrow.textContent = '▼ Expand';
+            }
+        };
+
+        const highConfRows = [];
+        const lowConfRows = [];
+
+        state.uniqueStyles.forEach((style, idx) => {
+            const hasFill = style.fill !== 'null';
+            const hasStroke = style.stroke !== 'null';
+            const sampleColor = hasFill ? style.fill : style.stroke;
+            const rgb = hexToRgb(sampleColor);
+
+            // Find closest palette matches
+            let bestMatch = null;
+            let minDist = Infinity;
+
+            // 1. Try to match pattern ID first
+            const patternCode = getSymbolFromPatternId(style.fill);
+            if (patternCode) {
+                const sym = state.oomPalette.find(o => codesMatch(o.code, patternCode));
+                if (sym) {
+                    bestMatch = sym;
+                    minDist = 0; // 100% confidence
+                }
+            }
+
+            // 2. Try to match LEGEND_RULES next
+            if (!bestMatch) {
+                const ruleKey = findLegendRule(style.fill, style.stroke, style.strokeWidth);
+                if (ruleKey) {
+                    const possibleCodes = LEGEND_RULES[ruleKey];
+                    if (possibleCodes && possibleCodes.length > 0) {
+                        if (possibleCodes.length === 1) {
+                            const sym = state.oomPalette.find(o => codesMatch(o.code, possibleCodes[0]));
+                            if (sym) {
+                                bestMatch = sym;
+                                minDist = 0; // 100% confidence
+                            }
+                        } else {
+                            // Multiple codes: disambiguate using group name keywords
+                            let selectedCode = possibleCodes[0];
+                            if (style.groupName) {
+                                const groupLower = style.groupName.toLowerCase();
+                                for (const code of possibleCodes) {
+                                    const sym = state.oomPalette.find(o => codesMatch(o.code, code));
+                                    if (sym && sym.name) {
+                                        const nameLower = sym.name.toLowerCase();
+                                        const keywords = ["contour", "building", "fence", "wall", "paved", "footpath", "track", "boundary", "bank", "cliff", "road", "canopy", "stairway", "vegetation", "water", "rock", "forest", "marsh", "meadow", "runway", "rough", "open", "land"];
+                                        const matchesKeyword = keywords.some(kw => groupLower.includes(kw) && nameLower.includes(kw));
+                                        if (matchesKeyword) {
+                                            selectedCode = code;
+                                            minDist = 0; // 100% confidence match
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            const sym = state.oomPalette.find(o => codesMatch(o.code, selectedCode));
+                            if (sym) {
+                                bestMatch = sym;
+                                if (minDist !== 0) minDist = 10; // Medium confidence
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. Fallback: standard palette color/width match
+            if (!bestMatch) {
+                const strokeWidthVal = parseFloat(style.strokeWidth);
+                const COMMON_KEYWORDS = ["contour", "building", "fence", "wall", "paved", "footpath", "track", "boundary", "bank", "cliff", "road", "canopy", "stairway"];
+                state.oomPalette.forEach(oomSymbol => {
+                    const dist = colorDist(rgb, oomSymbol.rgb);
+                    
+                    const isArea = oomSymbol.symbolType === '4' || oomSymbol.symbolType === '16';
+                    const isLine = oomSymbol.symbolType === '2';
+                    const typeBias = (hasFill && isArea) || (!hasFill && isLine) ? 0 : 30;
+                    
+                    let widthPenalty = 0;
+                    if (!hasFill && hasStroke && !isNaN(strokeWidthVal)) {
+                        const svgWidthOmap = strokeWidthVal * (25.4 / 72) * 1000;
+                        if (oomSymbol.lineWidth !== null) {
+                            widthPenalty = Math.abs(svgWidthOmap - oomSymbol.lineWidth) / 10;
+                        } else {
+                            widthPenalty = 50;
+                        }
+                    }
+                    
+                    let priorityBonus = 0;
+                    if (oomSymbol.name) {
+                        const nameLower = oomSymbol.name.toLowerCase();
+                        const isCommon = COMMON_KEYWORDS.some(kw => nameLower.includes(kw));
+                        if (isCommon) {
+                            priorityBonus = -15;
+                        }
+                    }
+                    
+                    let groupBonus = 0;
+                    if (style.groupName) {
+                        const groupLower = style.groupName.toLowerCase();
+                        const symbolLower = oomSymbol.name ? oomSymbol.name.toLowerCase() : '';
+                        const keywords = ["contour", "building", "fence", "wall", "paved", "footpath", "track", "boundary", "bank", "cliff", "road", "canopy", "stairway", "vegetation", "water", "rock", "forest", "marsh", "meadow", "runway", "rough", "open", "land"];
+                        for (const kw of keywords) {
+                            if (groupLower.includes(kw) && symbolLower.includes(kw)) {
+                                groupBonus = -30;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    const score = dist + typeBias + widthPenalty + priorityBonus + groupBonus;
+                    if (score < minDist) {
+                        minDist = score;
+                        bestMatch = oomSymbol;
+                    }
+                });
+            }
+
+            let badgeClass = 'red';
+            let badgeIcon = '✗';
+            if (minDist < 15) {
+                badgeClass = 'green';
+                badgeIcon = '✓';
+            } else if (minDist <= 35) {
+                badgeClass = 'yellow';
+                badgeIcon = '⚠';
+            }
+
+            const rowHtml = `<tr class="wizard-row" data-style-key="${style.key}">
+                <td>
+                    <div style="display: flex; gap: 15px; align-items: center;">
+                        <div style="width: 100px; flex-shrink: 0;">
+                            ${renderThumbnail(style, state.pageCenter)}
+                        </div>
+                        <div style="flex-grow: 1;">
+                            <div class="color-preview-pair">
+                                <div class="swatch" style="background:${hasFill ? style.fill : 'transparent'};"></div>
+                                ${hasStroke ? `<div class="swatch stroke" style="border-color:${style.stroke};"></div>` : ''}
+                                <span style="font-size:0.75rem; color:var(--text-muted); font-family: monospace;">
+                                    ${hasFill ? `Fill: ${style.fill}` : ''} ${hasStroke ? `Stroke: ${style.stroke}` : ''} ${style.strokeWidth ? `(${style.strokeWidth}px)` : ''}
+                                </span>
+                            </div>
+                            ${style.groupName ? `<div style="font-size: 0.72rem; color: #a5b4fc; margin-top: 4px; font-weight: 600;">Group: ${style.groupName}</div>` : ''}
+                        </div>
+                    </div>
+                </td>
+                <td><span style="font-weight:700">${style.count}</span></td>
+                <td>
+                    <div style="position:relative; display:flex; align-items:center; gap:8px; width:100%;">
+                        <span class="badge ${badgeClass}" title="Confidence Score: ${bestMatch ? minDist.toFixed(1) : 'N/A'}">${badgeIcon}</span>
+                        <input type="text" list="symbol-list" class="symbol-select" data-idx="${idx}" value="${bestMatch ? bestMatch.code : ''}" placeholder="Search OOM Legend...">
+                    </div>
+                </td>
+            </tr>`;
+
+            if (minDist <= 35) {
+                highConfRows.push(rowHtml);
+            } else {
+                lowConfRows.push(rowHtml);
+            }
+        });
+
+        // Set high confidence body
+        wizardBody.innerHTML = highConfRows.join('');
+
+        // Set low confidence body and toggle drawer visibility
+        const lowConfDrawer = document.getElementById('low-conf-drawer');
+        const lowConfCount = document.getElementById('low-conf-count');
+        const lowConfBody = document.getElementById('low-conf-body');
+
+        if (lowConfRows.length > 0) {
+            lowConfCount.textContent = lowConfRows.length;
+            lowConfBody.innerHTML = lowConfRows.join('');
+            lowConfDrawer.style.display = 'block';
+        } else {
+            lowConfDrawer.style.display = 'none';
+        }
+
+        // Add drawer toggle click handler
+        const lowConfHeader = document.getElementById('low-conf-header');
+        if (lowConfHeader) {
+            lowConfHeader.onclick = window.toggleLowConfDrawer;
+        }
+
+        // Add hover highlight triggers
+        document.querySelectorAll('.wizard-row').forEach(row => {
+            const key = row.getAttribute('data-style-key');
+            row.addEventListener('mouseenter', () => {
+                const previewContainer = document.getElementById('map-preview-container');
+                if (previewContainer) {
+                    const elementsToHighlight = previewContainer.querySelectorAll(`[data-style-key="${key}"]`);
+                    elementsToHighlight.forEach(el => el.classList.add('map-highlight'));
+                }
+            });
+            row.addEventListener('mouseleave', () => {
+                const previewContainer = document.getElementById('map-preview-container');
+                if (previewContainer) {
+                    const highlighted = previewContainer.querySelectorAll('.map-highlight');
+                    highlighted.forEach(el => el.classList.remove('map-highlight'));
+                }
+            });
+        });
+    }
+
+    // --- Interactive Map Zooming and Panning ---
+    const zoomState = {
+        scale: 1,
+        tx: 0,
+        ty: 0,
+        isDragging: false,
+        startX: 0,
+        startY: 0
+    };
+
+    function updateMapTransform() {
+        const svg = document.querySelector('#map-preview-container svg');
+        if (svg) {
+            svg.style.transformOrigin = '0 0';
+            svg.style.transform = `translate(${zoomState.tx}px, ${zoomState.ty}px) scale(${zoomState.scale})`;
+        }
+    }
+
+    function zoomMap(factor) {
+        const svg = document.querySelector('#map-preview-container svg');
+        if (!svg) return;
+        
+        const container = document.getElementById('map-preview-container');
+        const rect = container.getBoundingClientRect();
+        const mx = rect.width / 2;
+        const my = rect.height / 2;
+        
+        const newScale = Math.min(Math.max(zoomState.scale * factor, 0.15), 35);
+        
+        const lx = (mx - zoomState.tx) / zoomState.scale;
+        const ly = (my - zoomState.ty) / zoomState.scale;
+        
+        zoomState.scale = newScale;
+        zoomState.tx = mx - lx * newScale;
+        zoomState.ty = my - ly * newScale;
+        
+        updateMapTransform();
+    }
+
+    function resetMapZoom() {
+        zoomState.scale = 1;
+        zoomState.tx = 0;
+        zoomState.ty = 0;
+        updateMapTransform();
+    }
+
+    // Set up mouse events for pan & zoom
+    (function initPanZoom() {
+        const container = document.getElementById('map-preview-container');
+        if (container) {
+            // Wheel zoom
+            container.addEventListener('wheel', e => {
+                const svg = container.querySelector('svg');
+                if (!svg) return;
+                e.preventDefault();
+                
+                const rect = container.getBoundingClientRect();
+                const mx = e.clientX - rect.left;
+                const my = e.clientY - rect.top;
+                
+                const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
+                const newScale = Math.min(Math.max(zoomState.scale * zoomFactor, 0.15), 35);
+                
+                const lx = (mx - zoomState.tx) / zoomState.scale;
+                const ly = (my - zoomState.ty) / zoomState.scale;
+                
+                zoomState.scale = newScale;
+                zoomState.tx = mx - lx * newScale;
+                zoomState.ty = my - ly * newScale;
+                
+                updateMapTransform();
+            }, { passive: false });
+
+            // Drag panning
+            container.addEventListener('mousedown', e => {
+                const svg = container.querySelector('svg');
+                if (!svg) return;
+                if (e.target.tagName.toLowerCase() === 'button' || e.target.classList.contains('zoom-btn')) return;
+                
+                zoomState.isDragging = true;
+                zoomState.startX = e.clientX - zoomState.tx;
+                zoomState.startY = e.clientY - zoomState.ty;
+                container.style.cursor = 'grabbing';
+            });
+
+            window.addEventListener('mousemove', e => {
+                if (!zoomState.isDragging) return;
+                zoomState.tx = e.clientX - zoomState.startX;
+                zoomState.ty = e.clientY - zoomState.startY;
+                updateMapTransform();
+            });
+
+            window.addEventListener('mouseup', () => {
+                if (zoomState.isDragging) {
+                    zoomState.isDragging = false;
+                    container.style.cursor = 'grab';
+                }
+            });
+        }
+    })();
+
+    // --- Core: Convert SVG Geometry to OMAP XML ---
+    document.getElementById('convert-btn').onclick = async () => {
+        setStatus('Generating map objects...', false);
+        debugLog(`convert-btn: starting conversion. inputs length = ${document.querySelectorAll('.symbol-select').length}`);
+        try {
+            const inputs = document.querySelectorAll('.symbol-select');
+            const mapping = new Map();
+            inputs.forEach(input => {
+                const code = input.value.split(' ')[0];
+                const sym = state.oomPalette.find(o => o.code === code || o.code === code + '.0');
+                if (sym) {
+                    mapping.set(state.uniqueStyles[input.dataset.idx].key, sym);
+                } else {
+                    debugLog(`convert-btn: Warning: could not find symbol for input code "${code}" (raw value: "${input.value}")`);
+                }
+            });
+            debugLog(`convert-btn: mapping size = ${mapping.size}`);
+
+            let newObjectsString = '';
+            let totalCount = 0;
+            const allElements = state.svgDoc.querySelectorAll('*');
+            const elements = Array.from(allElements).filter(el => {
+                const ln = el.localName || el.tagName.split(':').pop().toLowerCase();
+                if (!['path', 'polygon', 'polyline', 'line', 'rect', 'circle', 'ellipse'].includes(ln)) return false;
+                if (isInsideDefs(el)) return false;
+                
+                // Exclude invisible elements
+                const fill = getElementStyle(el, 'fill');
+                const stroke = getElementStyle(el, 'stroke');
+                if (fill === 'null' && stroke === 'null') return false;
+                
+                return true;
+            });
+
+            elements.forEach(el => {
+                const fill = getElementStyle(el, 'fill');
+                const stroke = getElementStyle(el, 'stroke');
+                const strokeWidth = getInheritedAttribute(el, 'stroke-width');
+                
+                // Compute effective stroke width, accounting for element's transform scale
+                let effectiveStrokeWidth = strokeWidth;
+                const matrix = getCombinedElementMatrix(el);
+                if (strokeWidth && !isNaN(parseFloat(strokeWidth))) {
+                    const scale = getMatrixScale(matrix);
+                    effectiveStrokeWidth = (parseFloat(strokeWidth) * scale).toFixed(4);
+                }
+                
+                // SVG Group Label Detection
+                const groupLabels = getGroupLabels(el);
+                const groupName = groupLabels.length > 0 ? groupLabels[0] : '';
+                
+                const key = `f:${fill}|s:${stroke}|w:${effectiveStrokeWidth}|g:${groupName}`;
+
+                const targetSymbol = mapping.get(key);
+                if (targetSymbol) {
+                    // Get combined element transformation matrix
+                    const matrix = getCombinedElementMatrix(el);
+                    
+                    // Parse shape coordinates into subpaths
+                    const pathStr = convertShapeToPathString(el);
+                    if (!pathStr) return;
+
+                    const subpaths = parseSVGPath(pathStr, matrix, state.pageCenter);
+                    
+                    // Compile subpaths to coordinates (handling outer boundaries and inner holes)
+                    const coords = compileSubpathsToCoords(subpaths);
+                    
+                    if (coords.length > 1) {
+                        newObjectsString += `      <object type="${targetSymbol.objType}" symbol="${targetSymbol.internalId}">\n`;
+                        newObjectsString += `        <coords count="${coords.length}">${coords.join(';')};</coords>\n`;
+                        if (targetSymbol.objType === "1") {
+                            // Areas in OMAP require a pattern coordinate reference block
+                            newObjectsString += `        <pattern rotation="0"><coord x="0" y="0"/></pattern>\n`;
+                        }
+                        newObjectsString += `      </object>\n`;
+                        totalCount++;
+                    }
+                }
+            });
+            debugLog(`convert-btn: totalCount = ${totalCount}`);
+
+            // Parse the template XML
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(state.oomText, 'application/xml');
+            
+            // Check for parser errors in template
+            const parserError = doc.getElementsByTagName('parsererror')[0];
+            if (parserError) {
+                throw new Error('XML parsing error in template: ' + parserError.textContent);
+            }
+
+            // Find the parts element
+            const partsElements = doc.getElementsByTagNameNS('*', 'parts');
+            let output = '';
+
+            if (partsElements.length > 0) {
+                const partsEl = partsElements[0];
+                partsEl.setAttribute('count', '1');
+                partsEl.setAttribute('current', '0');
+                
+                // Clear existing children
+                while (partsEl.firstChild) {
+                    partsEl.removeChild(partsEl.firstChild);
+                }
+                
+                // Create new part element
+                const partEl = doc.createElementNS(partsEl.namespaceURI || 'http://openorienteering.org/apps/mapper/xml/v2', 'part');
+                partEl.setAttribute('name', 'Converted Map');
+                
+                // Parse and import objects node
+                const objectsXml = `<objects xmlns="${partsEl.namespaceURI || 'http://openorienteering.org/apps/mapper/xml/v2'}" count="${totalCount}">${newObjectsString}</objects>`;
+                const objectsDoc = parser.parseFromString(objectsXml, 'application/xml');
+                const objParserError = objectsDoc.getElementsByTagName('parsererror')[0];
+                if (objParserError) {
+                    throw new Error('XML parsing error in generated objects: ' + objParserError.textContent);
+                }
+                
+                const importedObjects = doc.importNode(objectsDoc.documentElement, true);
+                partEl.appendChild(importedObjects);
+                partsEl.appendChild(partEl);
+                
+                const serializer = new XMLSerializer();
+                output = serializer.serializeToString(doc);
+            } else {
+                // Fallback: if parts tag is not found, insert right before </barrier> or </map>
+                const finalBlock = `\n<parts count="1" current="0">\n  <part name="Converted Map">\n    <objects count="${totalCount}">\n${newObjectsString}    </objects>\n  </part>\n</parts>\n`;
+                const cleanTemplate = state.oomText
+                    .replace(/<parts[^>]*>[\s\S]*?<\/parts>/gi, '')
+                    .replace(/<parts[^>]*\/>/gi, '')
+                    .replace(/<objects[^>]*>[\s\S]*?<\/objects>/gi, '')
+                    .replace(/<objects[^>]*\/>/gi, '');
+                
+                if (cleanTemplate.lastIndexOf('</barrier>') !== -1) {
+                    output = cleanTemplate.substring(0, cleanTemplate.lastIndexOf('</barrier>')) + finalBlock + cleanTemplate.substring(cleanTemplate.lastIndexOf('</barrier>'));
+                } else if (cleanTemplate.lastIndexOf('</map>') !== -1) {
+                    output = cleanTemplate.substring(0, cleanTemplate.lastIndexOf('</map>')) + finalBlock + cleanTemplate.substring(cleanTemplate.lastIndexOf('</map>'));
+                } else {
+                    output = cleanTemplate + finalBlock;
+                }
+            }
+
+            // Trigger file download
+            const a = document.createElement('a'); 
+            a.href = URL.createObjectURL(new Blob([output], { type: 'application/xml' })); 
+            a.download = `converted_v2.omap`; 
+            a.click();
+            
+            setStatus(`Great Success! ${totalCount} objects converted and saved.`, false);
+        } catch (e) {
+            console.error(e);
+            setStatus('Conversion error: ' + e.message, true);
+        }
+    };
+
+    // --- Helper: Parse OMAP File Palette ---
+    async function parseOOMPalette(oomText) {
+        const doc = (new DOMParser()).parseFromString(oomText, 'application/xml');
+        const colorMap = {};
+        
+        const colors = doc.getElementsByTagNameNS('*', 'color');
+        debugLog(`parseOOMPalette: found ${colors.length} color elements in template.`);
+        for (let i = 0; i < colors.length; i++) {
+            const c = colors[i];
+            const rgbElements = c.getElementsByTagNameNS('*', 'rgb');
+            if (rgbElements.length > 0) {
+                const rgb = rgbElements[0];
+                colorMap[c.getAttribute('priority')] = { 
+                    r: Math.round(parseFloat(rgb.getAttribute('r')) * 255), 
+                    g: Math.round(parseFloat(rgb.getAttribute('g')) * 255), 
+                    b: Math.round(parseFloat(rgb.getAttribute('b')) * 255) 
+                };
+            }
+        }
+        debugLog(`parseOOMPalette: colorMap has ${Object.keys(colorMap).length} priorities.`);
+
+        const palette = [];
+        const symbols = doc.getElementsByTagNameNS('*', 'symbol');
+        debugLog(`parseOOMPalette: found ${symbols.length} symbol elements in template.`);
+        for (let i = 0; i < symbols.length; i++) {
+            const s = symbols[i];
+            const code = s.getAttribute('code'), id = s.getAttribute('id'), sType = s.getAttribute('type');
+            if (!code || !id) continue;
+            
+            const areaElements = s.getElementsByTagNameNS('*', 'area_symbol');
+            const lineElements = s.getElementsByTagNameNS('*', 'line_symbol');
+            
+            const area = areaElements.length > 0 ? areaElements[0] : null;
+            const line = lineElements.length > 0 ? lineElements[0] : null;
+            
+            const colorId = area ? area.getAttribute('inner_color') : (line ? line.getAttribute('color') : null);
+            
+            // Extract line width if it is a line symbol
+            let lineWidth = null;
+            if (line) {
+                lineWidth = parseFloat(line.getAttribute('line_width'));
+            }
+            
+            if (colorId && colorMap[colorId]) {
+                palette.push({ 
+                    code, 
+                    internalId: id, 
+                    rgb: colorMap[colorId], 
+                    name: s.getAttribute('name'), 
+                    symbolType: sType,
+                    objType: sType === "1" ? "0" : (sType === "8" ? "4" : "1"),
+                    lineWidth: isNaN(lineWidth) ? null : lineWidth
+                });
+            }
+        }
+        debugLog(`parseOOMPalette: successfully created palette with ${palette.length} symbols.`);
+        return palette;
+    }
+
+    // --- Helper: Convert PDF File to SVG DOM using native PDF.js SVGGraphics ---
+    async function loadPDFAndConvertToSVG(file) {
+        if (typeof pdfjsLib !== 'undefined' && pdfjsLib.DOMSVGFactory && !pdfjsLib.DOMSVGFactory.prototype._patched) {
+            debugLog('Monkeypatching DOMSVGFactory.prototype.create to handle invalid dimensions...');
+            const originalCreate = pdfjsLib.DOMSVGFactory.prototype.create;
+            pdfjsLib.DOMSVGFactory.prototype.create = function(width, height, skipDimensions) {
+                if (width <= 0) width = 1;
+                if (height <= 0) height = 1;
+                return originalCreate.call(this, width, height, skipDimensions);
+            };
+            pdfjsLib.DOMSVGFactory.prototype._patched = true;
+        }
+
+        const arrayBuffer = await file.arrayBuffer();
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const pdf = await loadingTask.promise;
+        const page = await pdf.getPage(1);
+
+        const viewport = page.getViewport({ scale: 1.0 });
+        const opList = await page.getOperatorList();
+        const svgGfx = new pdfjsLib.SVGGraphics(page.commonObjs, page.objs);
+        const svgElement = await svgGfx.getSVG(opList, viewport);
+        
+        debugLog('PDF rendered to native SVG element successfully!');
+        return svgElement;
+    }
+
+    // --- Helper: Find SVG Group Labels ---
+    function getGroupLabels(el) {
+        const labels = [];
+        let curr = el.parentElement;
+        while (curr && curr.tagName && curr.tagName.toLowerCase() !== 'svg') {
+            const id = curr.getAttribute('id');
+            const label = curr.getAttribute('inkscape:label') || curr.getAttributeNS('http://www.inkscape.org/namespaces/inkscape','label');
+            if (id && !/^(path|rect|g|line|circle|polygon|polyline)\d+/i.test(id)) labels.push(id.toLowerCase());
+            if (label) labels.push(label.toLowerCase());
+            curr = curr.parentElement;
+        }
+        return labels;
+    }
+
+    // --- Helper: Check if Element is inside Defs ---
+    function isInsideDefs(el) {
+        let curr = el.parentElement;
+        while (curr && curr.tagName && (curr.localName || curr.tagName.split(':').pop().toLowerCase()) !== 'svg') {
+            if ((curr.localName || curr.tagName.split(':').pop().toLowerCase()) === 'defs') return true;
+            curr = curr.parentElement;
+        }
+        return false;
+    }
+
+    // --- Helper: Render inline SVG Thumbnail for Style ---
+    function renderThumbnail(styleObj, center) {
+        if (!styleObj.samples || styleObj.samples.length === 0) {
+            return `<svg width="100" height="60" style="background:#f1f5f9; border-radius:8px; border:1px solid rgba(0,0,0,0.15);"></svg>`;
+        }
+        
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+        
+        const pathsData = [];
+        
+        styleObj.samples.forEach(subpaths => {
+            let pathD = '';
+            subpaths.forEach(subpath => {
+                if (subpath.length === 0) return;
+                
+                const firstParts = subpath[0].split(' ');
+                const fx = firstParts[0] / (1000 * (25.4 / 72)) + center.x;
+                const fy = firstParts[1] / (1000 * (25.4 / 72)) + center.y;
+                pathD += `M ${fx.toFixed(1)} ${fy.toFixed(1)} `;
+                
+                if (fx < minX) minX = fx;
+                if (fx > maxX) maxX = fx;
+                if (fy < minY) minY = fy;
+                if (fy > maxY) maxY = fy;
+                
+                for (let i = 1; i < subpath.length; i++) {
+                    const parts = subpath[i].split(' ');
+                    const tx = parts[0] / (1000 * (25.4 / 72)) + center.x;
+                    const ty = parts[1] / (1000 * (25.4 / 72)) + center.y;
+                    pathD += `L ${tx.toFixed(1)} ${ty.toFixed(1)} `;
+                    
+                    if (tx < minX) minX = tx;
+                    if (tx > maxX) maxX = tx;
+                    if (ty < minY) minY = ty;
+                    if (ty > maxY) maxY = ty;
+                }
+            });
+            if (pathD) pathsData.push(pathD);
+        });
+        
+        if (minX === Infinity) {
+            return `<svg width="100" height="60" style="background:#f1f5f9; border-radius:8px; border:1px solid rgba(0,0,0,0.15);"></svg>`;
+        }
+        
+        const w = maxX - minX;
+        const h = maxY - minY;
+        
+        // Add padding
+        const pad = Math.max(w, h, 10) * 0.15;
+        const vx = minX - pad;
+        const vy = minY - pad;
+        const vw = w + 2 * pad;
+        const vh = h + 2 * pad;
+        
+        const hasFill = styleObj.fill !== 'null';
+        const hasStroke = styleObj.stroke !== 'null';
+        const fillAttr = hasFill ? styleObj.fill : 'none';
+        const strokeAttr = hasStroke ? styleObj.stroke : 'none';
+        
+        let lw = parseFloat(styleObj.strokeWidth) || 1.5;
+        if (isNaN(lw)) lw = 1.5;
+        // Keep line width visible relative to thumbnail scale
+        if (vw > 0) {
+            const scaleRatio = 100 / vw;
+            if (lw * scaleRatio < 1.5) {
+                lw = 1.5 / scaleRatio;
+            }
+        }
+        
+        const pathsXml = pathsData.map(d => `<path d="${d}" fill="${fillAttr}" stroke="${strokeAttr}" stroke-width="${lw}" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
+        
+        return `<svg width="100" height="60" viewBox="${vx.toFixed(1)} ${vy.toFixed(1)} ${vw.toFixed(1)} ${vh.toFixed(1)}" style="background:#f1f5f9; border-radius:8px; border:1px solid rgba(0,0,0,0.15); display:block; margin:0 auto;">${pathsXml}</svg>`;
+    }
+
+    // --- Helper: Find SVG viewBox Center ---
+    function getPageCenter(svgElement) {
+        const viewBoxAttr = svgElement.getAttribute('viewBox');
+        if (viewBoxAttr) {
+            const vb = viewBoxAttr.trim().split(/[\s,]+/).map(parseFloat);
+            if (vb.length === 4) {
+                return { x: vb[0] + vb[2] / 2, y: vb[1] + vb[3] / 2 };
+            }
+        }
+        const w = parseFloat(svgElement.getAttribute('width') || '842');
+        const h = parseFloat(svgElement.getAttribute('height') || '595');
+        return { x: w / 2, y: h / 2 };
+    }
+
+    // --- Helper: Parse SVG Stylesheet rules ---
+    function parseSVGStyles(svgElement) {
+        const styles = {};
+        const styleEls = svgElement.querySelectorAll('style');
+        styleEls.forEach(styleEl => {
+            const cssText = styleEl.textContent;
+            const regex = /\.([a-zA-Z0-9_-]+)\s*\{([^}]+)\}/g;
+            let match;
+            while ((match = regex.exec(cssText)) !== null) {
+                const className = match[1];
+                const decls = match[2];
+                styles[className] = styles[className] || {};
+                decls.split(';').forEach(decl => {
+                    const parts = decl.split(':');
+                    if (parts.length === 2) {
+                        styles[className][parts[0].trim()] = parts[1].trim();
+                    }
+                });
+            }
+        });
+        return styles;
+    }
+
+    // --- Helper: Normalize SVG Colors and Support Style Inheritance ---
+    function getInheritedAttribute(el, attr) {
+        let curr = el;
+        while (curr && curr.tagName && (curr.localName || curr.tagName.split(':').pop().toLowerCase()) !== 'svg') {
+            // 1. Try class-based stylesheet rules
+            if (curr.classList) {
+                for (let i = 0; i < curr.classList.length; i++) {
+                    const cls = curr.classList[i];
+                    if (state.svgStyles && state.svgStyles[cls] && state.svgStyles[cls][attr]) {
+                        return state.svgStyles[cls][attr];
+                    }
+                }
+            }
+            // 2. Try inline style or attribute
+            let v = curr.style ? curr.style[attr] : null;
+            if (!v && curr.style && curr.style.getPropertyValue) {
+                v = curr.style.getPropertyValue(attr);
+            }
+            if (!v) v = curr.getAttribute(attr);
+            if (!v) {
+                const s = curr.getAttribute('style');
+                if (s) {
+                    const p = s.split(';').find(x => x.trim().startsWith(attr));
+                    if (p) v = p.split(':')[1].trim();
+                }
+            }
+            if (v && v !== 'inherit') return v;
+            curr = curr.parentElement;
+        }
+        return '';
+    }
+
+    function getElementStyle(el, prop) {
+        const val = getInheritedAttribute(el, prop);
+        return normalizeColor(val || 'none');
+    }
+
+    function normalizeColor(c) {
+        if (!c || c === 'none' || c === 'transparent') return 'null';
+        c = c.trim().toLowerCase();
+        if (NAMED_COLORS[c]) return NAMED_COLORS[c];
+        if (c.startsWith('rgb')) {
+            const m = c.match(/\d+/g);
+            if (m) return "#" + m.slice(0,3).map(x => parseInt(x).toString(16).padStart(2, '0')).join('');
+        }
+        if (c.startsWith('#') && c.length === 4) {
+            return '#' + c[1] + c[1] + c[2] + c[2] + c[3] + c[3];
+        }
+        return c;
+    }
+
+    function hexToRgb(hex) {
+        if (!hex || hex === 'null' || hex === 'none') return {r:255,g:255,b:255};
+        let h = hex.replace('#', '');
+        const num = parseInt(h, 16);
+        return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+    }
+
+    function colorDist(c1, c2) { return Math.sqrt((c1.r-c2.r)**2 + (c1.g-c2.g)**2 + (c1.b-c2.b)**2); }
+
+    // --- Helper: Matrix Multiplication ---
+    function multiplyMatrices(m1, m2) {
+        return [
+            m1[0]*m2[0] + m1[2]*m2[1],
+            m1[1]*m2[0] + m1[3]*m2[1],
+            m1[0]*m2[2] + m1[2]*m2[3],
+            m1[1]*m2[2] + m1[3]*m2[3],
+            m1[0]*m2[4] + m1[2]*m2[5] + m1[4],
+            m1[1]*m2[4] + m1[3]*m2[5] + m1[5]
+        ];
+    }
+
+    // --- Helper: Parse Inline Transform Attributes ---
+    function parseSVGTransform(transformStr) {
+        let m = [1, 0, 0, 1, 0, 0];
+        if (!transformStr) return m;
+        
+        const regex = /([a-zA-Z]+)\(([^)]+)\)/g;
+        let match;
+        
+        while ((match = regex.exec(transformStr)) !== null) {
+            const type = match[1].toLowerCase();
+            const args = match[2].split(/[\s,]+/).map(parseFloat);
+            let cmdM = [1, 0, 0, 1, 0, 0];
+            
+            if (type === 'matrix' && args.length === 6) {
+                cmdM = args;
+            } else if (type === 'translate') {
+                cmdM = [1, 0, 0, 1, args[0], args[1] || 0];
+            } else if (type === 'scale') {
+                cmdM = [args[0], 0, 0, args[1] !== undefined ? args[1] : args[0], 0, 0];
+            } else if (type === 'rotate') {
+                const angle = args[0] * Math.PI / 180;
+                const cos = Math.cos(angle);
+                const sin = Math.sin(angle);
+                if (args.length >= 3) {
+                    const cx = args[1], cy = args[2];
+                    cmdM = multiplyMatrices([1, 0, 0, 1, cx, cy], multiplyMatrices([cos, sin, -sin, cos, 0, 0], [1, 0, 0, 1, -cx, -cy]));
+                } else {
+                    cmdM = [cos, sin, -sin, cos, 0, 0];
+                }
+            }
+            m = multiplyMatrices(m, cmdM);
+        }
+        return m;
+    }
+
+    function getCombinedElementMatrix(el) {
+        let m = [1, 0, 0, 1, 0, 0];
+        let curr = el;
+        while (curr && curr.tagName && (curr.localName || curr.tagName.split(':').pop().toLowerCase()) !== 'svg') {
+            const tAttr = curr.getAttribute('transform');
+            if (tAttr) {
+                const tm = parseSVGTransform(tAttr);
+                m = multiplyMatrices(tm, m);
+            }
+            curr = curr.parentElement;
+        }
+        return m;
+    }
+
+    // Extract uniform scale factor from a 2D matrix [a,b,c,d,e,f]
+    // SVG stroke-width is scaled by this when transforms are applied
+    function getMatrixScale(matrix) {
+        return Math.sqrt(matrix[0] * matrix[0] + matrix[1] * matrix[1]);
+    }
+
+    // --- Helper: Add transformed points to coordinate stack ---
+    function addCoordinate(coords, x, y, flag, matrix, center) {
+        const tx = x * matrix[0] + y * matrix[2] + matrix[4];
+        const ty = x * matrix[1] + y * matrix[3] + matrix[5];
+        
+        // Centered coordinate shift — both SVG and OMAP use Y-down, so no Y flip needed
+        const xMm = (tx - center.x) * (25.4 / 72);
+        const yMm = (ty - center.y) * (25.4 / 72);
+        
+        const xOmap = Math.round(xMm * 1000);
+        const yOmap = Math.round(yMm * 1000);
+        
+        if (!isNaN(xOmap) && !isNaN(yOmap)) {
+            coords.push(`${xOmap} ${yOmap}${flag ? ' ' + flag : ''}`);
+        }
+    }
+
+    // --- Helper: Convert shapes to equivalent path strings ---
+    function convertShapeToPathString(el) {
+        const tag = el.localName || el.tagName.split(':').pop().toLowerCase();
+        if (tag === 'path') return el.getAttribute('d') || '';
+        if (tag === 'polygon' || tag === 'polyline') {
+            const ptsAttr = el.getAttribute('points');
+            if (!ptsAttr) return '';
+            const pts = ptsAttr.trim().split(/[\s,]+/);
+            if (pts.length < 2) return '';
+            let d = `M ${pts[0]} ${pts[1]}`;
+            for (let i = 2; i < pts.length; i += 2) {
+                if (pts[i] && pts[i+1]) d += ` L ${pts[i]} ${pts[i+1]}`;
+            }
+            if (tag === 'polygon') d += ' Z';
+            return d;
+        }
+        if (tag === 'line') {
+            return `M ${el.getAttribute('x1') || '0'} ${el.getAttribute('y1') || '0'} L ${el.getAttribute('x2') || '0'} ${el.getAttribute('y2') || '0'}`;
+        }
+        if (tag === 'rect') {
+            const x = parseFloat(el.getAttribute('x') || '0'), y = parseFloat(el.getAttribute('y') || '0');
+            const w = parseFloat(el.getAttribute('width') || '0'), h = parseFloat(el.getAttribute('height') || '0');
+            return `M ${x} ${y} L ${x+w} ${y} L ${x+w} ${y+h} L ${x} ${y+h} Z`;
+        }
+        if (tag === 'circle') {
+            const cx = parseFloat(el.getAttribute('cx') || '0'), cy = parseFloat(el.getAttribute('cy') || '0'), r = parseFloat(el.getAttribute('r') || '0');
+            const k = 0.552284749831;
+            return `M ${cx + r} ${cy} ` +
+                   `C ${cx + r} ${cy - k * r} ${cx + k * r} ${cy - r} ${cx} ${cy - r} ` +
+                   `C ${cx - k * r} ${cy - r} ${cx - r} ${cy - k * r} ${cx - r} ${cy} ` +
+                   `C ${cx - r} ${cy + k * r} ${cx - k * r} ${cy + r} ${cx} ${cy + r} ` +
+                   `C ${cx + k * r} ${cy + r} ${cx + r} ${cy + k * r} ${cx + r} ${cy} Z`;
+        }
+        if (tag === 'ellipse') {
+            const cx = parseFloat(el.getAttribute('cx') || '0'), cy = parseFloat(el.getAttribute('cy') || '0');
+            const rx = parseFloat(el.getAttribute('rx') || '0'), ry = parseFloat(el.getAttribute('ry') || '0');
+            const k = 0.552284749831;
+            return `M ${cx + rx} ${cy} ` +
+                   `C ${cx + rx} ${cy - k * ry} ${cx + k * rx} ${cy - ry} ${cx} ${cy - ry} ` +
+                   `C ${cx - k * rx} ${cy - ry} ${cx - rx} ${cy - k * ry} ${cx - rx} ${cy} ` +
+                   `C ${cx - rx} ${cy + k * ry} ${cx - k * rx} ${cy + ry} ${cx} ${cy + ry} ` +
+                   `C ${cx + k * rx} ${cy + ry} ${cx + rx} ${cy + k * ry} ${cx + rx} ${cy} Z`;
+        }
+        return '';
+    }
+
+    // --- Helper: Robust Path Parser ---
+    function parseSVGPath(d, matrix, center) {
+        const matches = d.match(/([a-df-z])|(-?\d*\.?\d+(?:[eE][-+]?\d+)?)/gi);
+        if (!matches) return [];
+        
+        const subpaths = [];
+        let currentPath = [];
+        let startPoint = { x: 0, y: 0 };
+        let controlPoint = { x: 0, y: 0 };
+        let qControlPoint = { x: 0, y: 0 };
+        let cursor = { x: 0, y: 0 };
+        
+        let i = 0;
+        let cmd = '';
+        
+        function getArgs(count) {
+            const args = [];
+            for (let j = 0; j < count; j++) {
+                if (i < matches.length && !isNaN(parseFloat(matches[i]))) {
+                    args.push(parseFloat(matches[i++]));
+                } else break;
+            }
+            return args;
+        }
+        
+        while (i < matches.length) {
+            const token = matches[i];
+            if (/[a-df-z]/i.test(token)) {
+                cmd = token;
+                i++;
+            }
+            
+            const isRel = cmd === cmd.toLowerCase();
+            const type = cmd.toUpperCase();
+            
+            if (type === 'M') {
+                const args = getArgs(2);
+                if (args.length < 2) break;
+                const targetX = isRel ? cursor.x + args[0] : args[0];
+                const targetY = isRel ? cursor.y + args[1] : args[1];
+                
+                if (currentPath.length > 0) subpaths.push(currentPath);
+                currentPath = [];
+                cursor = { x: targetX, y: targetY };
+                startPoint = { x: targetX, y: targetY };
+                addCoordinate(currentPath, cursor.x, cursor.y, 0, matrix, center);
+                
+                // Implicit L commands following M
+                while (i < matches.length && !isNaN(parseFloat(matches[i]))) {
+                    const nextArgs = getArgs(2);
+                    if (nextArgs.length < 2) break;
+                    const lx = isRel ? cursor.x + nextArgs[0] : nextArgs[0];
+                    const ly = isRel ? cursor.y + nextArgs[1] : nextArgs[1];
+                    cursor = { x: lx, y: ly };
+                    addCoordinate(currentPath, cursor.x, cursor.y, 0, matrix, center);
+                }
+            } else if (type === 'L') {
+                const args = getArgs(2);
+                if (args.length < 2) break;
+                const targetX = isRel ? cursor.x + args[0] : args[0];
+                const targetY = isRel ? cursor.y + args[1] : args[1];
+                cursor = { x: targetX, y: targetY };
+                addCoordinate(currentPath, cursor.x, cursor.y, 0, matrix, center);
+            } else if (type === 'H') {
+                const args = getArgs(1);
+                if (args.length < 1) break;
+                const targetX = isRel ? cursor.x + args[0] : args[0];
+                cursor = { x: targetX, y: cursor.y };
+                addCoordinate(currentPath, cursor.x, cursor.y, 0, matrix, center);
+            } else if (type === 'V') {
+                const args = getArgs(1);
+                if (args.length < 1) break;
+                const targetY = isRel ? cursor.y + args[0] : args[0];
+                cursor = { x: cursor.x, y: targetY };
+                addCoordinate(currentPath, cursor.x, cursor.y, 0, matrix, center);
+            } else if (type === 'C') {
+                const args = getArgs(6);
+                if (args.length < 6) break;
+                const x1 = isRel ? cursor.x + args[0] : args[0];
+                const y1 = isRel ? cursor.y + args[1] : args[1];
+                const x2 = isRel ? cursor.x + args[2] : args[2];
+                const y2 = isRel ? cursor.y + args[3] : args[3];
+                const x3 = isRel ? cursor.x + args[4] : args[4];
+                const y3 = isRel ? cursor.y + args[5] : args[5];
+                
+                // Add curve start flag (1) to previous coordinate
+                if (currentPath.length > 0) {
+                    const lastIdx = currentPath.length - 1;
+                    const lastParts = currentPath[lastIdx].split(' ');
+                    const flag = parseInt(lastParts[2] || '0');
+                    currentPath[lastIdx] = `${lastParts[0]} ${lastParts[1]} ${flag | 1}`;
+                }
+                
+                // Add Bezier control points and end point
+                addCoordinate(currentPath, x1, y1, 0, matrix, center);
+                addCoordinate(currentPath, x2, y2, 0, matrix, center);
+                addCoordinate(currentPath, x3, y3, 0, matrix, center);
+                
+                controlPoint = { x: x2, y: y2 };
+                cursor = { x: x3, y: y3 };
+            } else if (type === 'S') {
+                const args = getArgs(4);
+                if (args.length < 4) break;
+                const x2 = isRel ? cursor.x + args[0] : args[0];
+                const y2 = isRel ? cursor.y + args[1] : args[1];
+                const x3 = isRel ? cursor.x + args[2] : args[2];
+                const y3 = isRel ? cursor.y + args[3] : args[3];
+                
+                let x1, y1;
+                if (cmd.toUpperCase() === 'S' || cmd.toUpperCase() === 'C') {
+                    x1 = 2 * cursor.x - controlPoint.x;
+                    y1 = 2 * cursor.y - controlPoint.y;
+                } else {
+                    x1 = cursor.x;
+                    y1 = cursor.y;
+                }
+                
+                if (currentPath.length > 0) {
+                    const lastIdx = currentPath.length - 1;
+                    const lastParts = currentPath[lastIdx].split(' ');
+                    const flag = parseInt(lastParts[2] || '0');
+                    currentPath[lastIdx] = `${lastParts[0]} ${lastParts[1]} ${flag | 1}`;
+                }
+                
+                addCoordinate(currentPath, x1, y1, 0, matrix, center);
+                addCoordinate(currentPath, x2, y2, 0, matrix, center);
+                addCoordinate(currentPath, x3, y3, 0, matrix, center);
+                
+                controlPoint = { x: x2, y: y2 };
+                cursor = { x: x3, y: y3 };
+            } else if (type === 'Q') {
+                const args = getArgs(4);
+                if (args.length < 4) break;
+                const x1 = isRel ? cursor.x + args[0] : args[0];
+                const y1 = isRel ? cursor.y + args[1] : args[1];
+                const x2 = isRel ? cursor.x + args[2] : args[2];
+                const y2 = isRel ? cursor.y + args[3] : args[3];
+                
+                // Quadratic to Cubic Bezier Conversion
+                const startPt = cursor;
+                const cp1x = startPt.x + (2 / 3) * (x1 - startPt.x);
+                const cp1y = startPt.y + (2 / 3) * (y1 - startPt.y);
+                const cp2x = x2 + (2 / 3) * (x1 - x2);
+                const cp2y = y2 + (2 / 3) * (y1 - y2);
+                
+                if (currentPath.length > 0) {
+                    const lastIdx = currentPath.length - 1;
+                    const lastParts = currentPath[lastIdx].split(' ');
+                    const flag = parseInt(lastParts[2] || '0');
+                    currentPath[lastIdx] = `${lastParts[0]} ${lastParts[1]} ${flag | 1}`;
+                }
+                
+                addCoordinate(currentPath, cp1x, cp1y, 0, matrix, center);
+                addCoordinate(currentPath, cp2x, cp2y, 0, matrix, center);
+                addCoordinate(currentPath, x2, y2, 0, matrix, center);
+                
+                qControlPoint = { x: x1, y: y1 };
+                cursor = { x: x2, y: y2 };
+            } else if (type === 'T') {
+                const args = getArgs(2);
+                if (args.length < 2) break;
+                const x2 = isRel ? cursor.x + args[0] : args[0];
+                const y2 = isRel ? cursor.y + args[1] : args[1];
+                
+                let x1, y1;
+                if (cmd.toUpperCase() === 'T' || cmd.toUpperCase() === 'Q') {
+                    x1 = 2 * cursor.x - qControlPoint.x;
+                    y1 = 2 * cursor.y - qControlPoint.y;
+                } else {
+                    x1 = cursor.x;
+                    y1 = cursor.y;
+                }
+                
+                // Quadratic to Cubic Bezier Conversion
+                const startPt = cursor;
+                const cp1x = startPt.x + (2 / 3) * (x1 - startPt.x);
+                const cp1y = startPt.y + (2 / 3) * (y1 - startPt.y);
+                const cp2x = x2 + (2 / 3) * (x1 - x2);
+                const cp2y = y2 + (2 / 3) * (y1 - y2);
+                
+                if (currentPath.length > 0) {
+                    const lastIdx = currentPath.length - 1;
+                    const lastParts = currentPath[lastIdx].split(' ');
+                    const flag = parseInt(lastParts[2] || '0');
+                    currentPath[lastIdx] = `${lastParts[0]} ${lastParts[1]} ${flag | 1}`;
+                }
+                
+                addCoordinate(currentPath, cp1x, cp1y, 0, matrix, center);
+                addCoordinate(currentPath, cp2x, cp2y, 0, matrix, center);
+                addCoordinate(currentPath, x2, y2, 0, matrix, center);
+                
+                qControlPoint = { x: x1, y: y1 };
+                cursor = { x: x2, y: y2 };
+            } else if (type === 'Z') {
+                if (currentPath.length > 0) {
+                    const lastIdx = currentPath.length - 1;
+                    const lastParts = currentPath[lastIdx].split(' ');
+                    const flag = parseInt(lastParts[2] || '0');
+                    currentPath[lastIdx] = `${lastParts[0]} ${lastParts[1]} ${flag | 2}`;
+                }
+                cursor = startPoint;
+                subpaths.push(currentPath);
+                currentPath = [];
+            } else {
+                i++; // Fallback for unsupported commands
+            }
+        }
+        
+        if (currentPath.length > 0) subpaths.push(currentPath);
+        return subpaths;
+    }
+
+    // --- Helper: Compile Outer Bounds and Inner Holes ---
+    function compileSubpathsToCoords(subpaths) {
+        if (subpaths.length === 0) return [];
+        const combined = [];
+        
+        // 1. Outer boundary
+        const outer = subpaths[0];
+        for (let j = 0; j < outer.length; j++) {
+            combined.push(outer[j]);
+        }
+        
+        // 2. Holes
+        for (let k = 1; k < subpaths.length; k++) {
+            const hole = subpaths[k];
+            if (hole.length === 0) continue;
+            
+            for (let j = 0; j < hole.length; j++) {
+                const parts = hole[j].split(' ');
+                let flag = parseInt(parts[2] || '0');
+                
+                if (j === 0) {
+                    flag = flag | 16; // HolePoint start (16)
+                }
+                if (j === hole.length - 1) {
+                    flag = flag | 18; // HolePoint + ClosePoint (16 | 2 = 18)
+                }
+                combined.push(`${parts[0]} ${parts[1]} ${flag}`);
+            }
+        }
+        return combined;
+    }
+</script>
+</body>
+</html>
