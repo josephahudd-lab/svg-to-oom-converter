@@ -743,6 +743,100 @@ function getPageCenter(svgElement) {
     return { x: w / 2, y: h / 2 };
 }
 
+function getElementBBoxAndCategory(el) {
+    const tag = el.localName || el.tagName.split(':').pop().toLowerCase();
+    const matrix = getCombinedElementMatrix(el);
+    const scale = getMatrixScale(matrix);
+    
+    let w = 0, h = 0;
+    
+    if (tag === 'circle') {
+        const r = parseFloat(el.getAttribute('r') || '0') * scale;
+        w = 2 * r;
+        h = 2 * r;
+    } else if (tag === 'ellipse') {
+        const rx = parseFloat(el.getAttribute('rx') || '0') * scale;
+        const ry = parseFloat(el.getAttribute('ry') || '0') * scale;
+        w = 2 * rx;
+        h = 2 * ry;
+    } else if (tag === 'rect') {
+        w = parseFloat(el.getAttribute('width') || '0') * scale;
+        h = parseFloat(el.getAttribute('height') || '0') * scale;
+    } else if (tag === 'line') {
+        const x1 = parseFloat(el.getAttribute('x1') || '0');
+        const y1 = parseFloat(el.getAttribute('y1') || '0');
+        const x2 = parseFloat(el.getAttribute('x2') || '0');
+        const y2 = parseFloat(el.getAttribute('y2') || '0');
+        w = Math.abs(x2 - x1) * scale;
+        h = Math.abs(y2 - y1) * scale;
+    } else if (tag === 'polygon' || tag === 'polyline') {
+        const ptsAttr = el.getAttribute('points');
+        if (ptsAttr) {
+            const nums = ptsAttr.trim().split(/[\s,]+/).map(parseFloat).filter(x => !isNaN(x));
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            for (let i = 0; i < nums.length; i += 2) {
+                const x = nums[i];
+                const y = nums[i+1];
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+            if (minX !== Infinity) {
+                w = (maxX - minX) * scale;
+                h = (maxY - minY) * scale;
+            }
+        }
+    } else if (tag === 'path') {
+        const d = el.getAttribute('d');
+        if (d) {
+            const nums = (d.match(/-?\d*\.?\d+(?:[eE][-+]?\d+)?/g) || []).map(parseFloat);
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            let isX = true;
+            for (let i = 0; i < nums.length; i++) {
+                const val = nums[i];
+                if (isX) {
+                    if (val < minX) minX = val;
+                    if (val > maxX) maxX = val;
+                } else {
+                    if (val < minY) minY = val;
+                    if (val > maxY) maxY = val;
+                }
+                isX = !isX;
+            }
+            if (minX !== Infinity) {
+                w = (maxX - minX) * scale;
+                h = (maxY - minY) * scale;
+            }
+        }
+    }
+    
+    const area = w * h;
+    const fill = getElementStyle(el, 'fill');
+    const hasFill = fill !== 'null';
+    
+    let category = 'line';
+    if (tag === 'circle' || tag === 'ellipse') {
+        category = 'point';
+    } else if (w > 0 && h > 0 && w <= 12 && h <= 12) {
+        category = 'point';
+    } else if (tag === 'line' || tag === 'polyline') {
+        category = 'line';
+    } else if (tag === 'path') {
+        const d = (el.getAttribute('d') || '').trim();
+        const isClosed = d.endsWith('z') || d.endsWith('Z');
+        if (isClosed || hasFill) {
+            category = area < 1000 ? 'area-small' : 'area';
+        } else {
+            category = 'line';
+        }
+    } else if (hasFill) {
+        category = area < 1000 ? 'area-small' : 'area';
+    }
+    
+    return { width: w, height: h, area: area, category: category };
+}
+
 function getCombinedElementMatrix(el) {
     let m = [1, 0, 0, 1, 0, 0];
     let curr = el;
@@ -1003,7 +1097,11 @@ async function run() {
         const groupLabels = getGroupLabels(el);
         const groupName = groupLabels.length > 0 ? groupLabels[0] : '';
         
-        const key = `f:${fill}|s:${stroke}|w:${effectiveStrokeWidth}|g:${groupName}`;
+        // Compute geometry Category and Bounding Box
+        const bboxInfo = getElementBBoxAndCategory(el);
+        const category = bboxInfo.category;
+        
+        const key = `f:${fill}|s:${stroke}|w:${effectiveStrokeWidth}|g:${groupName}|t:${category}`;
         
         if (!stylesMap.has(key)) {
             stylesMap.set(key, {
@@ -1039,6 +1137,14 @@ async function run() {
         const sampleColor = hasFill ? style.fill : style.stroke;
         const rgb = hexToRgb(sampleColor);
         
+        // Extract category from key
+        let category = 'area';
+        const keyParts = style.key.split('|');
+        const typePart = keyParts.find(p => p.startsWith('t:'));
+        if (typePart) {
+            category = typePart.substring(2);
+        }
+
         let bestMatch = null;
         let minDist = Infinity;
         const strokeWidthVal = parseFloat(style.strokeWidth);
@@ -1094,13 +1200,22 @@ async function run() {
             }
         }
 
-        // 3. Fallback: standard palette color/width match
         if (!bestMatch) {
             oomPalette.forEach(oomSymbol => {
                 const dist = colorDist(rgb, oomSymbol.rgb);
-                const isArea = oomSymbol.symbolType === '4' || oomSymbol.symbolType === '16';
-                const isLine = oomSymbol.symbolType === '2';
-                const typeBias = (hasFill && isArea) || (!hasFill && isLine) ? 0 : 30;
+                
+                const oomType = oomSymbol.symbolType; // '1' point, '2' line, '4'/'16' area
+                let typeBias = 50; // High penalty for incorrect geometry types
+                if (category === 'point' && oomType === '1') typeBias = 0;
+                else if (category === 'line' && oomType === '2') typeBias = 0;
+                else if (category === 'area' && (oomType === '4' || oomType === '16')) typeBias = 0;
+                else if (category === 'area-small' && (oomType === '4' || oomType === '16' || oomType === '1')) typeBias = 0;
+                
+                // Forest (405) should never be used for small areas or points
+                let forestPenalty = 0;
+                if (oomSymbol.code.startsWith('405') && category !== 'area') {
+                    forestPenalty = 100;
+                }
                 
                 let widthPenalty = 0;
                 if (!hasFill && hasStroke && !isNaN(strokeWidthVal)) {
@@ -1134,7 +1249,7 @@ async function run() {
                     }
                 }
                 
-                const score = dist + typeBias + widthPenalty + priorityBonus + groupBonus;
+                const score = dist + typeBias + forestPenalty + widthPenalty + priorityBonus + groupBonus;
                 if (score < minDist) {
                     minDist = score;
                     bestMatch = oomSymbol;
@@ -1172,7 +1287,11 @@ async function run() {
         const groupLabels = getGroupLabels(el);
         const groupName = groupLabels.length > 0 ? groupLabels[0] : '';
         
-        const key = `f:${fill}|s:${stroke}|w:${effectiveStrokeWidth}|g:${groupName}`;
+        // Compute geometry category and BBox
+        const bboxInfo = getElementBBoxAndCategory(el);
+        const category = bboxInfo.category;
+        
+        const key = `f:${fill}|s:${stroke}|w:${effectiveStrokeWidth}|g:${groupName}|t:${category}`;
         
         const targetSymbol = mapping.get(key);
         if (targetSymbol) {
