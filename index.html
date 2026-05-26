@@ -243,6 +243,7 @@
                                 <tr>
                                     <th style="width: 320px;">Vector Feature Style</th>
                                     <th>Count</th>
+                                    <th style="text-align: center; width: 80px;">Exclude</th>
                                     <th>Map to OOM Symbol</th>
                                 </tr>
                             </thead>
@@ -1277,6 +1278,9 @@ const state = {
                     </div>
                 </td>
                 <td><span style="font-weight:700">${style.count}</span></td>
+                <td style="text-align: center;">
+                    <input type="checkbox" class="exclude-checkbox" data-idx="${idx}" style="transform: scale(1.3); cursor: pointer;">
+                </td>
                 <td>
                     <div style="position:relative; display:flex; align-items:center; gap:8px; width:100%;">
                         <span class="badge ${badgeClass}" title="Confidence Score: ${bestMatch ? minDist.toFixed(1) : 'N/A'}">${badgeIcon}</span>
@@ -1313,6 +1317,27 @@ const state = {
         if (lowConfHeader) {
             lowConfHeader.onclick = window.toggleLowConfDrawer;
         }
+
+        // Handle Exclude checkbox change events
+        document.querySelectorAll('.exclude-checkbox').forEach(cb => {
+            cb.addEventListener('change', (e) => {
+                const row = e.target.closest('tr');
+                const select = row.querySelector('.symbol-select');
+                if (e.target.checked) {
+                    row.style.opacity = '0.4';
+                    if (select) {
+                        select.disabled = true;
+                        select.style.textDecoration = 'line-through';
+                    }
+                } else {
+                    row.style.opacity = '1';
+                    if (select) {
+                        select.disabled = false;
+                        select.style.textDecoration = 'none';
+                    }
+                }
+            });
+        });
 
         // Add hover highlight triggers
         let dynamicStyle = document.getElementById('dynamic-highlight-style');
@@ -1452,16 +1477,26 @@ const state = {
         try {
             const inputs = document.querySelectorAll('.symbol-select');
             const mapping = new Map();
+            const excludedKeys = new Set();
             inputs.forEach(input => {
-                const code = input.value.split(' ')[0];
-                const sym = state.oomPalette.find(o => o.code === code || o.code === code + '.0');
-                if (sym) {
-                    mapping.set(state.uniqueStyles[input.dataset.idx].key, sym);
+                const idx = input.dataset.idx;
+                const styleObj = state.uniqueStyles[idx];
+                const row = input.closest('tr');
+                const excludeCheckbox = row ? row.querySelector('.exclude-checkbox') : null;
+                
+                if (excludeCheckbox && excludeCheckbox.checked) {
+                    excludedKeys.add(styleObj.key);
                 } else {
-                    debugLog(`convert-btn: Warning: could not find symbol for input code "${code}" (raw value: "${input.value}")`);
+                    const code = input.value.split(' ')[0];
+                    const sym = state.oomPalette.find(o => o.code === code || o.code === code + '.0');
+                    if (sym) {
+                        mapping.set(styleObj.key, sym);
+                    } else {
+                        debugLog(`convert-btn: Warning: could not find symbol for input code "${code}" (raw value: "${input.value}")`);
+                    }
                 }
             });
-            debugLog(`convert-btn: mapping size = ${mapping.size}`);
+            debugLog(`convert-btn: mapping size = ${mapping.size}, excluded size = ${excludedKeys.size}`);
 
             let newObjectsString = '';
             let totalCount = 0;
@@ -1501,6 +1536,10 @@ const state = {
                 const category = bboxInfo.category;
                 
                 const key = `f:${fill}|s:${stroke}|w:${effectiveStrokeWidth}|g:${groupName}|t:${category}`;
+
+                if (excludedKeys.has(key)) {
+                    return; // Skip this excluded style key
+                }
 
                 const targetSymbol = mapping.get(key);
                 if (targetSymbol) {
