@@ -71,7 +71,7 @@
         .step.active { background: var(--primary); width: 60px; box-shadow: 0 0 15px var(--primary); }
 
         /* File Upload Area */
-        .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+        .upload-grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
         .drop-zone {
             background: var(--glass);
             border: 2px dashed var(--border);
@@ -224,9 +224,14 @@
                 </div>
                 <div class="drop-zone" id="oom-zone">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    <span class="label">OOM Template</span>
-                    <span class="filename" id="oom-name">Select Blank Template .omap</span>
+                    <span class="label">Custom Template</span>
+                    <span class="filename" id="oom-name">Select Custom .omap File</span>
                     <input type="file" id="oom-input" accept=".omap">
+                </div>
+                <div class="drop-zone" id="default-template-zone" style="cursor: pointer; position: relative;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <span class="label">Default Sprint Template</span>
+                    <span class="filename" id="default-template-name">Load ISSprOM 2019_4000</span>
                 </div>
             </div>
             <button class="main-btn" id="analyze-btn" disabled>Scan Files & Start Wizard</button>
@@ -913,15 +918,17 @@
 
 const state = { 
         svgDoc: null, 
+        svgStyles: {},
         oomText: '', 
         oomPalette: [], 
         uniqueStyles: [],
-        svgStyles: {},
+        useDefaultTemplate: false,
         pageCenter: { x: 421, y: 297.5 } // Default A4 center in points
     };
 
     // --- DOM Elements ---
     const mapIn = document.getElementById('map-input'), oomIn = document.getElementById('oom-input'), analyzeBtn = document.getElementById('analyze-btn');
+    const defaultTemplateZone = document.getElementById('default-template-zone');
     const wizardSec = document.getElementById('wizard-section'), uploadSec = document.getElementById('upload-section');
     const wizardBody = document.getElementById('wizard-body'), status = document.getElementById('status');
     const symbolList = document.getElementById('symbol-list');
@@ -933,12 +940,35 @@ const state = {
         checkReady();
     };
     oomIn.onchange = e => { 
-        document.getElementById('oom-name').textContent = e.target.files[0]?.name; 
-        document.getElementById('oom-zone').classList.add('active');
+        if (e.target.files[0]) {
+            state.useDefaultTemplate = false;
+            defaultTemplateZone.classList.remove('active');
+            document.getElementById('default-template-name').textContent = 'Load ISSprOM 2019_4000';
+            
+            document.getElementById('oom-name').textContent = e.target.files[0]?.name; 
+            document.getElementById('oom-zone').classList.add('active');
+        } else {
+            document.getElementById('oom-name').textContent = 'Select Custom .omap File';
+            document.getElementById('oom-zone').classList.remove('active');
+        }
+        checkReady();
+    };
+    defaultTemplateZone.onclick = () => {
+        state.useDefaultTemplate = true;
+        defaultTemplateZone.classList.add('active');
+        document.getElementById('default-template-name').textContent = 'Selected: ISSprOM 2019_4000.omap';
+        
+        // Deactivate custom uploader
+        oomIn.value = '';
+        document.getElementById('oom-name').textContent = 'Select Custom .omap File';
+        document.getElementById('oom-zone').classList.remove('active');
+        
         checkReady();
     };
 
-    function checkReady() { analyzeBtn.disabled = !(mapIn.files[0] && oomIn.files[0]); }
+    function checkReady() { 
+        analyzeBtn.disabled = !(mapIn.files[0] && (oomIn.files[0] || state.useDefaultTemplate)); 
+    }
     function setStatus(msg, isErr) { status.innerHTML = msg; status.className = 'status ' + (isErr ? 'error' : 'success'); }
 
     // --- Core: Analyze Vector Map & Load Template ---
@@ -946,7 +976,17 @@ const state = {
         setStatus('Analyzing files. This might take a moment for PDFs...', false);
         try {
             // 1. Read OOM Template
-            state.oomText = await oomIn.files[0].text();
+            if (state.useDefaultTemplate) {
+                setStatus('Fetching default sprint template (ISSprOM 2019)...', false);
+                const response = await fetch('ISSprOM 2019_4000.omap');
+                if (!response.ok) {
+                    throw new Error('Failed to load default template file ISSprOM 2019_4000.omap. Make sure it is in the same directory as this HTML page.');
+                }
+                state.oomText = await response.text();
+            } else {
+                state.oomText = await oomIn.files[0].text();
+            }
+            
             debugLog(`Template loaded. Length: ${state.oomText.length}`);
             state.oomPalette = await parseOOMPalette(state.oomText);
             
