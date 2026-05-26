@@ -143,18 +143,19 @@
         .success { color: var(--accent); }
         .error { color: #f87171; }
 
-        /* Interactive map preview highlighting */
         .map-highlight {
             stroke: #ff00ff !important;
-            stroke-width: 3px !important;
+            stroke-width: 3.5px !important;
             stroke-dasharray: none !important;
-            filter: drop-shadow(0 0 8px #ff00ff) !important;
-            animation: pulse-glow 1s infinite alternate !important;
+            vector-effect: non-scaling-stroke !important;
             opacity: 1 !important;
         }
-        @keyframes pulse-glow {
-            from { filter: drop-shadow(0 0 2px #ff00ff); opacity: 0.7; }
-            to { filter: drop-shadow(0 0 12px #ff00ff); opacity: 1; }
+        path.map-highlight[fill], 
+        polygon.map-highlight[fill], 
+        rect.map-highlight[fill], 
+        circle.map-highlight[fill],
+        ellipse.map-highlight[fill] {
+            fill: rgba(255, 0, 255, 0.4) !important;
         }
 
         .wizard-table tr {
@@ -1071,6 +1072,7 @@ const state = {
                 previewSvg.style.height = '100%';
                 previewSvg.style.maxWidth = '100%';
                 previewSvg.style.maxHeight = '100%';
+                previewSvg.style.willChange = 'transform';
                 previewContainer.insertBefore(previewSvg, previewContainer.firstChild);
                 
                 // Show controls and reset zoom
@@ -1293,21 +1295,31 @@ const state = {
         }
 
         // Add hover highlight triggers
+        let dynamicStyle = document.getElementById('dynamic-highlight-style');
+        if (!dynamicStyle) {
+            dynamicStyle = document.createElement('style');
+            dynamicStyle.id = 'dynamic-highlight-style';
+            document.head.appendChild(dynamicStyle);
+        }
+
         document.querySelectorAll('.wizard-row').forEach(row => {
             const key = row.getAttribute('data-style-key');
             row.addEventListener('mouseenter', () => {
-                const previewContainer = document.getElementById('map-preview-container');
-                if (previewContainer) {
-                    const elementsToHighlight = previewContainer.querySelectorAll(`[data-style-key="${key}"]`);
-                    elementsToHighlight.forEach(el => el.classList.add('map-highlight'));
-                }
+                const hasFill = !key.startsWith('f:null');
+                const escapedKey = key.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+                dynamicStyle.textContent = `
+                    #map-preview-container [data-style-key="${escapedKey}"] {
+                        stroke: #ff00ff !important;
+                        stroke-width: 3.5px !important;
+                        stroke-dasharray: none !important;
+                        vector-effect: non-scaling-stroke !important;
+                        opacity: 1 !important;
+                        ${hasFill ? 'fill: rgba(255, 0, 255, 0.4) !important;' : ''}
+                    }
+                `;
             });
             row.addEventListener('mouseleave', () => {
-                const previewContainer = document.getElementById('map-preview-container');
-                if (previewContainer) {
-                    const highlighted = previewContainer.querySelectorAll('.map-highlight');
-                    highlighted.forEach(el => el.classList.remove('map-highlight'));
-                }
+                dynamicStyle.textContent = '';
             });
         });
     }
