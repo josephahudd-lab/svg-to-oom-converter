@@ -1450,7 +1450,7 @@ const state = {
                     <div style="display:flex; align-items:center; gap:8px; width:100%; position:relative;">
                         <span class="badge ${badgeClass}" title="Confidence Score: ${bestMatch ? minDist.toFixed(1) : 'N/A'}">${badgeIcon}</span>
                         <div class="symbol-select-container" style="flex-grow:1; position:relative;">
-                            <input type="text" class="symbol-select" data-idx="${idx}" data-category="${category}" value="${bestMatch ? bestMatch.code + ' - ' + bestMatch.name : ''}" placeholder="Search compatible symbols..." style="width:100%;">
+                            <input type="text" class="symbol-select" data-idx="${idx}" data-category="${category}" data-group="${group}" value="${bestMatch ? bestMatch.code + ' - ' + bestMatch.name : ''}" placeholder="Search compatible symbols..." style="width:100%;">
                             <div class="symbol-dropdown-menu"></div>
                         </div>
                     </div>
@@ -1593,13 +1593,13 @@ const state = {
             const menu = input.nextElementSibling;
             const idx = input.dataset.idx;
             const rowCategory = input.dataset.category; // 'point', 'line', 'area', 'area-small'
+            const rowGroup = input.dataset.group;       // 'plain-fill', 'textured-fill', 'strokes', 'area-stroke', 'points'
             let previousValue = input.value;
 
             function filterAndRender(searchTerm = '') {
                 const term = (searchTerm.includes(' - ') ? searchTerm.split(' - ')[1] || '' : searchTerm).toLowerCase().trim();
                 
-                const recommended = [];
-                const others = [];
+                const filtered = [];
 
                 state.oomPalette.forEach(sym => {
                     // Check search term
@@ -1609,82 +1609,84 @@ const state = {
                         if (!codeMatch && !nameMatch) return;
                     }
                     
-                    // Check compatibility
+                    // Check strict compatibility rules based on category group
                     const oomType = sym.symbolType;
                     let isCompatible = false;
-                    if (rowCategory === 'point' && oomType === '1') isCompatible = true;
-                    else if (rowCategory === 'line' && oomType === '2') isCompatible = true;
-                    else if (rowCategory === 'area' && (oomType === '4' || oomType === '16')) isCompatible = true;
-                    else if (rowCategory === 'area-small' && (oomType === '4' || oomType === '16' || oomType === '1')) isCompatible = true;
+                    
+                    if (rowGroup === 'plain-fill' || rowGroup === 'textured-fill') {
+                        // Plain/Textured fills can ONLY map to Area symbols (types 4 and 16)
+                        if (oomType === '4' || oomType === '16') isCompatible = true;
+                    } else if (rowGroup === 'strokes') {
+                        // Individual strokes can ONLY map to Line symbols (type 2)
+                        if (oomType === '2') isCompatible = true;
+                    } else if (rowGroup === 'area-stroke') {
+                        // Area of strokes can map to Area (4/16) or Line (2) symbols
+                        if (oomType === '4' || oomType === '16' || oomType === '2') isCompatible = true;
+                    } else if (rowGroup === 'points') {
+                        // Points can map to Point (1) or Area (4/16) symbols
+                        if (oomType === '1' || oomType === '4' || oomType === '16') isCompatible = true;
+                    } else {
+                        // Fallback fallback compatibility check
+                        if (rowCategory === 'point' && oomType === '1') isCompatible = true;
+                        else if (rowCategory === 'line' && oomType === '2') isCompatible = true;
+                        else if (rowCategory === 'area' && (oomType === '4' || oomType === '16')) isCompatible = true;
+                        else if (rowCategory === 'area-small' && (oomType === '4' || oomType === '16' || oomType === '1')) isCompatible = true;
+                    }
                     
                     if (isCompatible) {
-                        recommended.push(sym);
-                    } else {
-                        others.push(sym);
+                        filtered.push(sym);
                     }
                 });
 
-                function renderListSection(list, title) {
-                    if (list.length === 0) return '';
-                    
-                    const groups = {
-                        "Land forms (1xx)": [],
-                        "Rock & Boulders (2xx)": [],
-                        "Water & Marsh (3xx)": [],
-                        "Vegetation (4xx)": [],
-                        "Man-made features (5xx)": [],
-                        "Technical symbols (6xx)": [],
-                        "Course Planning (7xx)": []
-                    };
-                    
-                    list.forEach(sym => {
-                        const firstChar = sym.code.charAt(0);
-                        if (firstChar === '1') groups["Land forms (1xx)"].push(sym);
-                        else if (firstChar === '2') groups["Rock & Boulders (2xx)"].push(sym);
-                        else if (firstChar === '3') groups["Water & Marsh (3xx)"].push(sym);
-                        else if (firstChar === '4') groups["Vegetation (4xx)"].push(sym);
-                        else if (firstChar === '5') groups["Man-made features (5xx)"].push(sym);
-                        else if (firstChar === '6') groups["Technical symbols (6xx)"].push(sym);
-                        else if (firstChar === '7') groups["Course Planning (7xx)"].push(sym);
-                        else {
-                            if (!groups["Other"]) groups["Other"] = [];
-                            groups["Other"].push(sym);
-                        }
-                    });
-                    
-                    let html = `<div style="font-size:0.75rem; font-weight:800; color:#c7d2fe; padding:0.6rem 0.5rem 0.3rem 0.5rem; text-transform:uppercase; letter-spacing:0.05em; border-bottom: 2px solid rgba(99,102,241,0.3); margin-top:0.6rem; font-family:'Outfit',sans-serif;">${title}</div>`;
-                    let hasItems = false;
-                    
-                    for (const groupName in groups) {
-                        const syms = groups[groupName];
-                        if (syms.length === 0) continue;
-                        hasItems = true;
-                        
-                        html += `<div class="symbol-group-header">${groupName}</div>`;
-                        syms.forEach(sym => {
-                            let typeText = 'Point';
-                            let typeClass = 'point';
-                            if (sym.symbolType === '2') { typeText = 'Line'; typeClass = 'line'; }
-                            else if (sym.symbolType === '4' || sym.symbolType === '16') { typeText = 'Area'; typeClass = 'area'; }
-                            else if (sym.symbolType === '8') { typeText = 'Text'; typeClass = 'text'; }
-                            
-                            const isSelected = input.value.split(' ')[0] === sym.code;
-                            
-                            html += `<div class="symbol-item ${isSelected ? 'selected' : ''}" data-code="${sym.code}" data-name="${sym.name}">
-                                <span><strong style="margin-right:8px;">${sym.code}</strong> ${sym.name}</span>
-                                <span class="symbol-type-badge ${typeClass}">${typeText}</span>
-                            </div>`;
-                        });
+                const groups = {
+                    "Land forms (1xx)": [],
+                    "Rock & Boulders (2xx)": [],
+                    "Water & Marsh (3xx)": [],
+                    "Vegetation (4xx)": [],
+                    "Man-made features (5xx)": [],
+                    "Technical symbols (6xx)": [],
+                    "Course Planning (7xx)": []
+                };
+                
+                filtered.forEach(sym => {
+                    const firstChar = sym.code.charAt(0);
+                    if (firstChar === '1') groups["Land forms (1xx)"].push(sym);
+                    else if (firstChar === '2') groups["Rock & Boulders (2xx)"].push(sym);
+                    else if (firstChar === '3') groups["Water & Marsh (3xx)"].push(sym);
+                    else if (firstChar === '4') groups["Vegetation (4xx)"].push(sym);
+                    else if (firstChar === '5') groups["Man-made features (5xx)"].push(sym);
+                    else if (firstChar === '6') groups["Technical symbols (6xx)"].push(sym);
+                    else if (firstChar === '7') groups["Course Planning (7xx)"].push(sym);
+                    else {
+                        if (!groups["Other"]) groups["Other"] = [];
+                        groups["Other"].push(sym);
                     }
-                    return hasItems ? html : '';
-                }
+                });
                 
                 let menuHtml = '';
-                menuHtml += renderListSection(recommended, "★ Recommended Symbols");
-                menuHtml += renderListSection(others, "Other Available Symbols");
+                for (const groupName in groups) {
+                    const syms = groups[groupName];
+                    if (syms.length === 0) continue;
+                    
+                    menuHtml += `<div class="symbol-group-header">${groupName}</div>`;
+                    syms.forEach(sym => {
+                        let typeText = 'Point';
+                        let typeClass = 'point';
+                        if (sym.symbolType === '2') { typeText = 'Line'; typeClass = 'line'; }
+                        else if (sym.symbolType === '4' || sym.symbolType === '16') { typeText = 'Area'; typeClass = 'area'; }
+                        else if (sym.symbolType === '8') { typeText = 'Text'; typeClass = 'text'; }
+                        
+                        const isSelected = input.value.split(' ')[0] === sym.code;
+                        
+                        menuHtml += `<div class="symbol-item ${isSelected ? 'selected' : ''}" data-code="${sym.code}" data-name="${sym.name}">
+                            <span><strong style="margin-right:8px;">${sym.code}</strong> ${sym.name}</span>
+                            <span class="symbol-type-badge ${typeClass}">${typeText}</span>
+                        </div>`;
+                    });
+                }
                 
                 if (menuHtml === '') {
-                    menuHtml = `<div style="padding:0.8rem; text-align:center; color:var(--text-muted); font-size:0.8rem;">No symbols found</div>`;
+                    menuHtml = `<div style="padding:0.8rem; text-align:center; color:var(--text-muted); font-size:0.8rem;">No compatible symbols found</div>`;
                 }
                 
                 menu.innerHTML = menuHtml;
