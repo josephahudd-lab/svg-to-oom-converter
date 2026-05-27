@@ -143,22 +143,72 @@
 
         .status { margin-top: 1.5rem; text-align: center; font-size: 0.95rem; min-height: 1.5rem; font-weight: 600; }
         .success { color: var(--accent); }
-        .error { color: #f87171; }
-
-        .map-highlight {
-            stroke: #ff00ff !important;
-            stroke-width: 3.5px !important;
-            stroke-dasharray: none !important;
-            vector-effect: non-scaling-stroke !important;
-            opacity: 1 !important;
+        /* Custom searchable dropdown select menu styling */
+        .symbol-select-container {
+            position: relative;
+            width: 100%;
         }
-        path.map-highlight[fill], 
-        polygon.map-highlight[fill], 
-        rect.map-highlight[fill], 
-        circle.map-highlight[fill],
-        ellipse.map-highlight[fill] {
-            fill: rgba(255, 0, 255, 0.4) !important;
+        .symbol-dropdown-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: #1e293b;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6);
+            max-height: 280px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+            padding: 0.5rem;
+            text-align: left;
         }
+        .symbol-group-header {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #a5b4fc;
+            padding: 0.6rem 0.5rem 0.3rem 0.5rem;
+            font-weight: 800;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            margin-top: 0.6rem;
+            font-family: 'Outfit', sans-serif;
+        }
+        .symbol-group-header:first-child {
+            margin-top: 0;
+        }
+        .symbol-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.55rem 0.75rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.8rem;
+            margin-top: 2px;
+            color: var(--text);
+        }
+        .symbol-item:hover {
+            background: rgba(99, 102, 241, 0.2);
+        }
+        .symbol-item.selected {
+            background: var(--primary) !important;
+            color: white !important;
+        }
+        .symbol-type-badge {
+            font-size: 0.65rem;
+            font-weight: 800;
+            padding: 0.15rem 0.35rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        .symbol-type-badge.point { background: rgba(236, 72, 153, 0.15); color: #f472b6; }
+        .symbol-type-badge.line { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+        .symbol-type-badge.area { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+        .symbol-type-badge.text { background: rgba(16, 185, 129, 0.15); color: #34d399; }
 
         .wizard-table tr {
             transition: background-color 0.2s;
@@ -200,6 +250,49 @@
         }
         .zoom-btn:active {
             transform: translateY(0) scale(0.95);
+        }
+
+        /* Category Tabs Styling */
+        .tabs-container {
+            display: flex;
+            gap: 8px;
+            margin-bottom: -0.5rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .tab-btn {
+            padding: 0.5rem 0.8rem;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.8rem;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            outline: none;
+        }
+        .tab-btn:hover {
+            color: var(--text);
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .tab-btn.active {
+            color: white;
+            background: var(--primary);
+        }
+        .tab-badge {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 1px 5px;
+            border-radius: 8px;
+            font-size: 0.7rem;
+            font-weight: 700;
+        }
+        .tab-btn.active .tab-badge {
+            background: rgba(255, 255, 255, 0.25);
         }
     </style>
 </head>
@@ -246,6 +339,14 @@
             <div class="wizard-layout" style="display: flex; gap: 2rem; align-items: flex-start; width: 100%;">
                 <!-- Left Column: Table and Drawer -->
                 <div class="wizard-table-column" style="flex: 1.2; min-width: 0; display: flex; flex-direction: column; gap: 1.5rem;">
+                    <div class="tabs-container">
+                        <button class="tab-btn active" data-tab="all">All <span class="tab-badge" id="tab-count-all">0</span></button>
+                        <button class="tab-btn" data-tab="plain-fill">Plain Fills <span class="tab-badge" id="tab-count-plain-fill">0</span></button>
+                        <button class="tab-btn" data-tab="textured-fill">Textured Fills <span class="tab-badge" id="tab-count-textured-fill">0</span></button>
+                        <button class="tab-btn" data-tab="strokes">Individual Strokes <span class="tab-badge" id="tab-count-strokes">0</span></button>
+                        <button class="tab-btn" data-tab="area-stroke">Area of Strokes <span class="tab-badge" id="tab-count-area-stroke">0</span></button>
+                        <button class="tab-btn" data-tab="points">Points <span class="tab-badge" id="tab-count-points">0</span></button>
+                    </div>
                     <div class="wizard-table-wrapper" style="margin-bottom: 0;">
                         <table class="wizard-table">
                             <thead>
@@ -937,7 +1038,6 @@ const state = {
     const oomZone = document.getElementById('oom-zone');
     const wizardSec = document.getElementById('wizard-section'), uploadSec = document.getElementById('upload-section');
     const wizardBody = document.getElementById('wizard-body'), status = document.getElementById('status');
-    const symbolList = document.getElementById('symbol-list');
 
     // --- Ingestion Event Listeners ---
     mapIn.onchange = e => { 
@@ -997,17 +1097,6 @@ const state = {
             debugLog(`Template loaded. Length: ${state.oomText.length}`);
             state.oomPalette = await parseOOMPalette(state.oomText);
             
-            // Build datalist for symbol auto-completion/search
-            symbolList.innerHTML = state.oomPalette
-                .map(p => {
-                    let typeStr = 'Line';
-                    if (p.symbolType === "1") typeStr = 'Point';
-                    else if (p.symbolType === "4" || p.symbolType === "16") typeStr = 'Area';
-                    else if (p.symbolType === "8") typeStr = 'Text';
-                    return `<option value="${p.code}">${p.code} - ${p.name} (${typeStr})</option>`;
-                })
-                .join('');
-
             // 2. Parse Source Vector File (SVG or PDF)
             const mapFile = mapIn.files[0];
             let svgElement;
@@ -1167,6 +1256,16 @@ const state = {
         const highConfRows = [];
         const lowConfRows = [];
 
+        // Tab count accumulator
+        const counts = {
+            all: state.uniqueStyles.length,
+            'plain-fill': 0,
+            'textured-fill': 0,
+            'strokes': 0,
+            'area-stroke': 0,
+            'points': 0
+        };
+
         state.uniqueStyles.forEach((style, idx) => {
             const hasFill = style.fill !== 'null';
             const hasStroke = style.stroke !== 'null';
@@ -1180,6 +1279,25 @@ const state = {
             if (typePart) {
                 category = typePart.substring(2);
             }
+
+            // Determine the classification group for tabbed viewing
+            let group = 'strokes';
+            if (category === 'point') {
+                group = 'points';
+            } else if (category === 'area' || category === 'area-small') {
+                if (hasFill) {
+                    if (style.fill.startsWith('url(#')) {
+                        group = 'textured-fill';
+                    } else {
+                        group = 'plain-fill';
+                    }
+                } else {
+                    group = 'area-stroke';
+                }
+            } else if (category === 'line') {
+                group = 'strokes';
+            }
+            counts[group]++;
 
             // Find closest palette matches
             let bestMatch = null;
@@ -1306,7 +1424,7 @@ const state = {
                 badgeIcon = '⚠';
             }
 
-            const rowHtml = `<tr class="wizard-row" data-style-key="${style.key}">
+            const rowHtml = `<tr class="wizard-row" data-group="${group}" data-style-key="${style.key}">
                 <td>
                     <div style="display: flex; gap: 15px; align-items: center;">
                         <div style="width: 100px; flex-shrink: 0;">
@@ -1329,9 +1447,12 @@ const state = {
                     <input type="checkbox" class="exclude-checkbox" data-idx="${idx}" style="transform: scale(1.3); cursor: pointer;">
                 </td>
                 <td>
-                    <div style="position:relative; display:flex; align-items:center; gap:8px; width:100%;">
+                    <div style="display:flex; align-items:center; gap:8px; width:100%; position:relative;">
                         <span class="badge ${badgeClass}" title="Confidence Score: ${bestMatch ? minDist.toFixed(1) : 'N/A'}">${badgeIcon}</span>
-                        <input type="text" list="symbol-list" class="symbol-select" data-idx="${idx}" value="${bestMatch ? bestMatch.code : ''}" placeholder="Search OOM Legend...">
+                        <div class="symbol-select-container" style="flex-grow:1; position:relative;">
+                            <input type="text" class="symbol-select" data-idx="${idx}" data-category="${category}" value="${bestMatch ? bestMatch.code + ' - ' + bestMatch.name : ''}" placeholder="Search compatible symbols..." style="width:100%;">
+                            <div class="symbol-dropdown-menu"></div>
+                        </div>
                     </div>
                 </td>
             </tr>`;
@@ -1357,6 +1478,54 @@ const state = {
             lowConfDrawer.style.display = 'block';
         } else {
             lowConfDrawer.style.display = 'none';
+        }
+
+        // Update tab badges
+        document.getElementById('tab-count-all').textContent = counts.all;
+        document.getElementById('tab-count-plain-fill').textContent = counts['plain-fill'];
+        document.getElementById('tab-count-textured-fill').textContent = counts['textured-fill'];
+        document.getElementById('tab-count-strokes').textContent = counts['strokes'];
+        document.getElementById('tab-count-area-stroke').textContent = counts['area-stroke'];
+        document.getElementById('tab-count-points').textContent = counts['points'];
+
+        // Set up tab switching logic
+        const tabButtons = document.querySelectorAll('.tab-btn');
+        tabButtons.forEach(btn => {
+            btn.onclick = () => {
+                tabButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                const selectedTab = btn.dataset.tab;
+                let visibleLowConfCount = 0;
+
+                document.querySelectorAll('.wizard-row').forEach(row => {
+                    const isVisible = (selectedTab === 'all' || row.dataset.group === selectedTab);
+                    if (isVisible) {
+                        row.style.display = '';
+                        if (row.closest('#low-conf-body')) {
+                            visibleLowConfCount++;
+                        }
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+
+                // Update low-confidence counter badge
+                if (lowConfCount) {
+                    lowConfCount.textContent = visibleLowConfCount;
+                }
+                // If there are no unresolved rows visible under this tab, hide the drawer entirely
+                if (lowConfDrawer) {
+                    lowConfDrawer.style.display = visibleLowConfCount > 0 ? 'block' : 'none';
+                }
+            };
+        });
+        
+        // Reset active tab to 'all' on render
+        const allTabBtn = document.querySelector('.tab-btn[data-tab="all"]');
+        if (allTabBtn) {
+            tabButtons.forEach(b => b.classList.remove('active'));
+            allTabBtn.classList.add('active');
         }
 
         // Add drawer toggle click handler
@@ -1414,6 +1583,155 @@ const state = {
                 dynamicStyle.textContent = '';
             });
         });
+
+        setupCustomDropdowns();
+    }
+
+    // --- Searchable Grouped Dropdowns ---
+    function setupCustomDropdowns() {
+        document.querySelectorAll('.symbol-select').forEach(input => {
+            const menu = input.nextElementSibling;
+            const idx = input.dataset.idx;
+            const rowCategory = input.dataset.category; // 'point', 'line', 'area', 'area-small'
+            let previousValue = input.value;
+
+            function filterAndRender(searchTerm = '') {
+                const term = (searchTerm.includes(' - ') ? searchTerm.split(' - ')[1] || '' : searchTerm).toLowerCase().trim();
+                
+                const recommended = [];
+                const others = [];
+
+                state.oomPalette.forEach(sym => {
+                    // Check search term
+                    if (term) {
+                        const codeMatch = sym.code.toLowerCase().includes(term);
+                        const nameMatch = sym.name && sym.name.toLowerCase().includes(term);
+                        if (!codeMatch && !nameMatch) return;
+                    }
+                    
+                    // Check compatibility
+                    const oomType = sym.symbolType;
+                    let isCompatible = false;
+                    if (rowCategory === 'point' && oomType === '1') isCompatible = true;
+                    else if (rowCategory === 'line' && oomType === '2') isCompatible = true;
+                    else if (rowCategory === 'area' && (oomType === '4' || oomType === '16')) isCompatible = true;
+                    else if (rowCategory === 'area-small' && (oomType === '4' || oomType === '16' || oomType === '1')) isCompatible = true;
+                    
+                    if (isCompatible) {
+                        recommended.push(sym);
+                    } else {
+                        others.push(sym);
+                    }
+                });
+
+                function renderListSection(list, title) {
+                    if (list.length === 0) return '';
+                    
+                    const groups = {
+                        "Land forms (1xx)": [],
+                        "Rock & Boulders (2xx)": [],
+                        "Water & Marsh (3xx)": [],
+                        "Vegetation (4xx)": [],
+                        "Man-made features (5xx)": [],
+                        "Technical symbols (6xx)": [],
+                        "Course Planning (7xx)": []
+                    };
+                    
+                    list.forEach(sym => {
+                        const firstChar = sym.code.charAt(0);
+                        if (firstChar === '1') groups["Land forms (1xx)"].push(sym);
+                        else if (firstChar === '2') groups["Rock & Boulders (2xx)"].push(sym);
+                        else if (firstChar === '3') groups["Water & Marsh (3xx)"].push(sym);
+                        else if (firstChar === '4') groups["Vegetation (4xx)"].push(sym);
+                        else if (firstChar === '5') groups["Man-made features (5xx)"].push(sym);
+                        else if (firstChar === '6') groups["Technical symbols (6xx)"].push(sym);
+                        else if (firstChar === '7') groups["Course Planning (7xx)"].push(sym);
+                        else {
+                            if (!groups["Other"]) groups["Other"] = [];
+                            groups["Other"].push(sym);
+                        }
+                    });
+                    
+                    let html = `<div style="font-size:0.75rem; font-weight:800; color:#c7d2fe; padding:0.6rem 0.5rem 0.3rem 0.5rem; text-transform:uppercase; letter-spacing:0.05em; border-bottom: 2px solid rgba(99,102,241,0.3); margin-top:0.6rem; font-family:'Outfit',sans-serif;">${title}</div>`;
+                    let hasItems = false;
+                    
+                    for (const groupName in groups) {
+                        const syms = groups[groupName];
+                        if (syms.length === 0) continue;
+                        hasItems = true;
+                        
+                        html += `<div class="symbol-group-header">${groupName}</div>`;
+                        syms.forEach(sym => {
+                            let typeText = 'Point';
+                            let typeClass = 'point';
+                            if (sym.symbolType === '2') { typeText = 'Line'; typeClass = 'line'; }
+                            else if (sym.symbolType === '4' || sym.symbolType === '16') { typeText = 'Area'; typeClass = 'area'; }
+                            else if (sym.symbolType === '8') { typeText = 'Text'; typeClass = 'text'; }
+                            
+                            const isSelected = input.value.split(' ')[0] === sym.code;
+                            
+                            html += `<div class="symbol-item ${isSelected ? 'selected' : ''}" data-code="${sym.code}" data-name="${sym.name}">
+                                <span><strong style="margin-right:8px;">${sym.code}</strong> ${sym.name}</span>
+                                <span class="symbol-type-badge ${typeClass}">${typeText}</span>
+                            </div>`;
+                        });
+                    }
+                    return hasItems ? html : '';
+                }
+                
+                let menuHtml = '';
+                menuHtml += renderListSection(recommended, "★ Recommended Symbols");
+                menuHtml += renderListSection(others, "Other Available Symbols");
+                
+                if (menuHtml === '') {
+                    menuHtml = `<div style="padding:0.8rem; text-align:center; color:var(--text-muted); font-size:0.8rem;">No symbols found</div>`;
+                }
+                
+                menu.innerHTML = menuHtml;
+                
+                // Add click handlers for items
+                menu.querySelectorAll('.symbol-item').forEach(item => {
+                    item.onclick = (e) => {
+                        e.stopPropagation();
+                        const code = item.dataset.code;
+                        const name = item.dataset.name;
+                        input.value = `${code} - ${name}`;
+                        previousValue = input.value;
+                        menu.style.display = 'none';
+                        input.classList.remove('error');
+                    };
+                });
+            }
+
+            input.onfocus = () => {
+                previousValue = input.value;
+                document.querySelectorAll('.symbol-dropdown-menu').forEach(m => m.style.display = 'none');
+                filterAndRender(''); // Show all options for browsing
+                menu.style.display = 'block';
+                input.select();
+            };
+
+            input.oninput = () => {
+                filterAndRender(input.value);
+            };
+
+            input.onblur = () => {
+                // Short timeout to let the click handler on dropdown items register before restoring
+                setTimeout(() => {
+                    const code = input.value.split(' - ')[0];
+                    const exists = state.oomPalette.some(s => s.code === code);
+                    if (!exists) {
+                        input.value = previousValue;
+                    }
+                }, 200);
+            };
+        });
+
+        document.onclick = (e) => {
+            if (!e.target.classList.contains('symbol-select') && !e.target.closest('.symbol-dropdown-menu')) {
+                document.querySelectorAll('.symbol-dropdown-menu').forEach(m => m.style.display = 'none');
+            }
+        };
     }
 
     // --- Interactive Map Zooming and Panning ---
