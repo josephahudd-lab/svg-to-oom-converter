@@ -271,6 +271,12 @@ global.XMLSerializer = dom.window.XMLSerializer;
         "f:null|s:#ffffff|w:0.50": [
                 "419.000"
         ],
+        "f:null|s:#2db457|w:0.71": [
+                "417.000"
+        ],
+        "f:null|s:#2db457|w:0.85": [
+                "418.000"
+        ],
         "f:null|s:#000000|w:0.10": [
                 "501.000",
                 "501.010",
