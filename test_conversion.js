@@ -1211,6 +1211,9 @@ async function run() {
 
         if (!bestMatch) {
             oomPalette.forEach(oomSymbol => {
+                if (oomSymbol.code === '999' || oomSymbol.code.startsWith('999.')) {
+                    return;
+                }
                 const dist = colorDist(rgb, oomSymbol.rgb);
                 
                 const oomType = oomSymbol.symbolType; // '1' point, '2' line, '4'/'16' area
